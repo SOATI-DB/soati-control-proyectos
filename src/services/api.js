@@ -139,6 +139,18 @@ export const actualizarConfig = (data) =>
   }).then(r => r.json())
 
 // Usuarios (desde shell-api)
+export const getPMs = () =>
+  fetch(`${SHELL_API}/api/users/pms`, { headers: headers() })
+    .then(r => r.json())
+    .then(users => Array.isArray(users) ? users : [])
+    .catch(() => [])
+
+export const getRecursosIngenieria = () =>
+  fetch(`${SHELL_API}/api/users/recursos?tipo=ingenieria`, { headers: headers() })
+    .then(r => r.json())
+    .then(users => Array.isArray(users) ? users : [])
+    .catch(() => [])
+
 export const getIngenieros = () =>
   fetch(`${SHELL_API}/api/users/lista-basica`, { headers: headers() })
     .then(r => r.json())

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getProyectos } from '../../services/api'
+import { getProyectos, getPMs, getRecursosIngenieria } from '../../services/api'
 import { formatFecha } from '../../utils/fecha'
 import { useAuth } from '../../hooks/useAuth'
 
@@ -37,14 +37,31 @@ export default function ListaProyectos() {
   const [cargando, setCargando] = useState(true)
   const [filtroEstado, setFiltroEstado] = useState('')
   const [busqueda, setBusqueda] = useState('')
+  const [filtroPM, setFiltroPM] = useState('')
+  const [filtroCliente, setFiltroCliente] = useState('')
+  const [filtroIngeniero, setFiltroIngeniero] = useState('')
+  const [listaPMs, setListaPMs] = useState([])
+  const [listaIngenieros, setListaIngenieros] = useState([])
 
   const puedeGestionar = user?.rol === 'admin' || tienePermiso('control-proyectos', 'gestionar_proyecto')
 
   useEffect(() => {
-    getProyectos()
+    getPMs().then(setListaPMs)
+    getRecursosIngenieria().then(setListaIngenieros)
+  }, [])
+
+  useEffect(() => {
+    setCargando(true)
+    const params = {}
+    if (filtroEstado)    params.estado             = filtroEstado
+    if (busqueda)        params.q                  = busqueda
+    if (filtroPM)        params.pm_id              = filtroPM
+    if (filtroCliente)   params.cliente            = filtroCliente
+    if (filtroIngeniero) params.ingeniero_cargo_id = filtroIngeniero
+    getProyectos(params)
       .then(data => { setProyectos(Array.isArray(data) ? data : []); setCargando(false) })
       .catch(() => setCargando(false))
-  }, [])
+  }, [filtroEstado, busqueda, filtroPM, filtroCliente, filtroIngeniero])
 
   const activos = proyectos.filter(p => !['cerrado', 'cancelado'].includes(p.estado))
   const enEjecucion = proyectos.filter(p => p.estado === 'en_ejecucion')
@@ -54,14 +71,16 @@ export default function ListaProyectos() {
     return dias !== null && dias <= 30 && dias >= 0
   })
 
-  const filtrados = proyectos.filter(p => {
-    if (filtroEstado && p.estado !== filtroEstado) return false
-    if (busqueda) {
-      const q = busqueda.toLowerCase()
-      return p.nombre.toLowerCase().includes(q) || p.codigo.toLowerCase().includes(q)
-    }
-    return true
-  })
+  function limpiarFiltros() {
+    setFiltroEstado('')
+    setBusqueda('')
+    setFiltroPM('')
+    setFiltroCliente('')
+    setFiltroIngeniero('')
+  }
+
+  const hayFiltros = filtroEstado || busqueda || filtroPM || filtroCliente || filtroIngeniero
+  const filtrados = proyectos
 
   if (cargando) return (
     <div className="flex items-center justify-center py-16 text-[#5f6b75] text-sm">Cargando...</div>
@@ -99,7 +118,7 @@ export default function ListaProyectos() {
       </div>
 
       {/* Filtros */}
-      <div className="flex gap-3 mb-4 flex-wrap">
+      <div className="flex gap-3 mb-2 flex-wrap">
         <input
           type="text"
           placeholder="Buscar por nombre o código..."
@@ -115,6 +134,39 @@ export default function ListaProyectos() {
           <option value="">Todos los estados</option>
           {Object.entries(ESTADO_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
+      </div>
+      <div className="flex gap-3 mb-4 flex-wrap">
+        <select
+          value={filtroPM}
+          onChange={e => setFiltroPM(e.target.value)}
+          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4E738A]/30 flex-1 min-w-40"
+        >
+          <option value="">PM — todos</option>
+          {listaPMs.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+        </select>
+        <input
+          type="text"
+          placeholder="Filtrar por cliente..."
+          value={filtroCliente}
+          onChange={e => setFiltroCliente(e.target.value)}
+          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4E738A]/30 flex-1 min-w-40"
+        />
+        <select
+          value={filtroIngeniero}
+          onChange={e => setFiltroIngeniero(e.target.value)}
+          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4E738A]/30 flex-1 min-w-40"
+        >
+          <option value="">Ingeniero a cargo — todos</option>
+          {listaIngenieros.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+        </select>
+        {hayFiltros && (
+          <button
+            onClick={limpiarFiltros}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm text-[#5f6b75] hover:bg-gray-50 transition-colors whitespace-nowrap"
+          >
+            Limpiar filtros
+          </button>
+        )}
       </div>
 
       {/* Tabla */}
