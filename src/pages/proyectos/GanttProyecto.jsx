@@ -1,16 +1,32 @@
 import { useEffect, useState, useRef, Fragment } from 'react'
 import { formatFecha } from '../../utils/fecha'
 
+function calcFechaFinFase(faseId, tareas) {
+  const tareasDeFase = tareas.filter(t => t.fase_id === faseId)
+  if (!tareasDeFase.length) return null
+  const fechasFin = tareasDeFase.map(t => {
+    if (t.fecha_inicio && t.duracion_dias) {
+      const fi = new Date(`${String(t.fecha_inicio).slice(0,10)}T12:00:00`)
+      fi.setDate(fi.getDate() + parseInt(t.duracion_dias) - 1)
+      return fi
+    }
+    if (t.fecha_limite) return new Date(`${String(t.fecha_limite).slice(0,10)}T12:00:00`)
+    return null
+  }).filter(Boolean)
+  if (!fechasFin.length) return null
+  const maxFecha = new Date(Math.max(...fechasFin.map(f => f.getTime())))
+  return `${maxFecha.getFullYear()}-${String(maxFecha.getMonth()+1).padStart(2,'0')}-${String(maxFecha.getDate()).padStart(2,'0')}`
+}
+
 const COLOR_ESTADO = {
-  en_progreso: '#4E738A',
-  en_curso:    '#4E738A',
-  completada:  '#2e9e5b',
   pendiente:   '#9aa1a9',
-  retrasada:   '#d9534f',
-  bloqueada:   '#EE7623',
+  en_progreso: '#4E738A',
+  completada:  '#52a96e',
+  bloqueada:   '#c0392b',
 }
 
 function barColor(estado) {
+  if (estado === 'en_curso') return COLOR_ESTADO.en_progreso
   return COLOR_ESTADO[estado] || COLOR_ESTADO.pendiente
 }
 
@@ -66,6 +82,8 @@ export default function GanttProyecto({ proyecto }) {
 
   const fases = proyecto?.fases ?? []
   const tareas = proyecto?.tareas ?? []
+  const subproyectos = proyecto?.subproyectos ?? []
+  const tieneSubproyectos = subproyectos.length > 0
 
   useEffect(() => {
     function medir() {
@@ -116,21 +134,46 @@ export default function GanttProyecto({ proyecto }) {
     return calcBar(t.fecha_inicio, t.fecha_limite, diaInicioStr, diasEnMes)
   }
 
-  // Orden de filas: fase → tarea → recursos de esa tarea
+  // Orden de filas: [subproyecto →] fase → tarea → recursos de esa tarea
   const orderedRows = []
-  for (const f of fases) {
-    orderedRows.push({ type: 'fase', item: f })
-    for (const t of getTareasDeFase(f.id)) {
+  if (tieneSubproyectos) {
+    for (const sp of subproyectos) {
+      orderedRows.push({ type: 'subproyecto', item: sp })
+      const fasesDelSP = fases.filter(f => f.subproyecto_id === sp.id)
+      for (const f of fasesDelSP) {
+        orderedRows.push({ type: 'fase', item: f })
+        for (const t of getTareasDeFase(f.id)) {
+          orderedRows.push({ type: 'tarea', item: t })
+          for (const r of (t.recursos || [])) {
+            orderedRows.push({ type: 'recurso', item: r, tarea: t })
+          }
+        }
+      }
+    }
+    for (const f of fases.filter(f => !f.subproyecto_id)) {
+      orderedRows.push({ type: 'fase', item: f })
+      for (const t of getTareasDeFase(f.id)) {
+        orderedRows.push({ type: 'tarea', item: t })
+        for (const r of (t.recursos || [])) {
+          orderedRows.push({ type: 'recurso', item: r, tarea: t })
+        }
+      }
+    }
+  } else {
+    for (const f of fases) {
+      orderedRows.push({ type: 'fase', item: f })
+      for (const t of getTareasDeFase(f.id)) {
+        orderedRows.push({ type: 'tarea', item: t })
+        for (const r of (t.recursos || [])) {
+          orderedRows.push({ type: 'recurso', item: r, tarea: t })
+        }
+      }
+    }
+    for (const t of tareasSinFase) {
       orderedRows.push({ type: 'tarea', item: t })
       for (const r of (t.recursos || [])) {
         orderedRows.push({ type: 'recurso', item: r, tarea: t })
       }
-    }
-  }
-  for (const t of tareasSinFase) {
-    orderedRows.push({ type: 'tarea', item: t })
-    for (const r of (t.recursos || [])) {
-      orderedRows.push({ type: 'recurso', item: r, tarea: t })
     }
   }
   const tareaRowIndex = {}
@@ -221,11 +264,11 @@ export default function GanttProyecto({ proyecto }) {
   function FilaTarea({ t, labelPrefix }) {
     const recursos = t.recursos || []
     const estaVencida = t.fecha_limite
-      && new Date(`${t.fecha_limite}T12:00:00`) < hoy
+      && new Date(`${String(t.fecha_limite).slice(0,10)}T12:00:00`) < hoy
       && t.estado !== 'completada'
     const barSLA      = calcBar(t.fecha_inicio, t.fecha_limite, diaInicioStr, diasEnMes)
     const barPrincipal = recursos.length === 0 ? getBarTarea(t) : null
-    const color = barColor(t.estado)
+    const colorFinal = estaVencida ? '#e74c3c' : barColor(t.estado)
     return (
       <Fragment>
         <div className="flex border-b border-gray-100 min-h-[32px]">
@@ -238,16 +281,16 @@ export default function GanttProyecto({ proyecto }) {
             {barSLA && recursos.length > 0 && (
               <div
                 className="absolute top-1 bottom-1 rounded"
-                style={{ left: barSLA.left, width: barSLA.width, backgroundColor: color, opacity: 0.3 }}
-                onMouseEnter={e => setTooltip({ x: e.clientX, y: e.clientY, label: t.titulo, estado: t.estado, fechaInicio: t.fecha_inicio, fechaFin: t.fecha_limite })}
+                style={{ left: barSLA.left, width: barSLA.width, backgroundColor: colorFinal, opacity: 0.3 }}
+                onMouseEnter={e => setTooltip({ x: e.clientX, y: e.clientY, label: t.titulo, estado: t.estado, fechaInicio: t.fecha_inicio, fechaFin: t.fecha_limite, avance: t.avance })}
                 onMouseLeave={() => setTooltip(null)}
               />
             )}
             {barPrincipal && (
               <div
                 className="absolute top-1 bottom-1 rounded cursor-pointer transition-opacity hover:opacity-80"
-                style={{ left: barPrincipal.left, width: barPrincipal.width, backgroundColor: color }}
-                onMouseEnter={e => setTooltip({ x: e.clientX, y: e.clientY, label: t.titulo, estado: t.estado, fechaInicio: t.fecha_inicio, fechaFin: t.fecha_limite })}
+                style={{ left: barPrincipal.left, width: barPrincipal.width, backgroundColor: colorFinal }}
+                onMouseEnter={e => setTooltip({ x: e.clientX, y: e.clientY, label: t.titulo, estado: t.estado, fechaInicio: t.fecha_inicio, fechaFin: t.fecha_limite, avance: t.avance })}
                 onMouseLeave={() => setTooltip(null)}
               />
             )}
@@ -302,15 +345,24 @@ export default function GanttProyecto({ proyecto }) {
 
       {/* Leyenda */}
       <div className="flex gap-4 mb-3 flex-wrap">
-        {Object.entries({ en_progreso: 'En progreso', completada: 'Completada', pendiente: 'Pendiente', retrasada: 'Retrasada', bloqueada: 'Bloqueada' }).map(([k, v]) => (
-          <span key={k} className="flex items-center gap-1 text-xs text-gray-500">
-            <span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: barColor(k) }} />
-            {v}
+        {[
+          { estado: 'pendiente',   label: 'Pendiente' },
+          { estado: 'en_progreso', label: 'En progreso' },
+          { estado: 'completada',  label: 'Completada' },
+          { estado: 'bloqueada',   label: 'Bloqueada' },
+        ].map(({ estado, label }) => (
+          <span key={estado} className="flex items-center gap-1 text-xs text-gray-500">
+            <span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: barColor(estado) }} />
+            {label}
           </span>
         ))}
         <span className="flex items-center gap-1 text-xs text-gray-500">
-          <span className="w-2 h-2 rounded-full inline-block bg-red-500" />
+          <span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: '#e74c3c' }} />
           SLA vencido
+        </span>
+        <span className="flex items-center gap-1 text-xs text-gray-500">
+          <span className="w-3 h-3 rounded-sm inline-block opacity-30" style={{ backgroundColor: '#4E738A' }} />
+          Rango SLA (cuando hay recursos)
         </span>
       </div>
 
@@ -336,32 +388,49 @@ export default function GanttProyecto({ proyecto }) {
 
         {/* Filas con SVG overlay para flechas */}
         <div className="relative">
-          {fases.map(f => {
-            const { inicio: faseInicio, fin: faseFin } = getRangoDeFase(f.id)
-            const barFase = calcBar(faseInicio || f.fecha_inicio_plan, faseFin || f.fecha_fin_plan, diaInicioStr, diasEnMes)
-            return (
-              <div key={f.id}>
-                <div className="flex bg-[#4E738A]/5 border-b border-gray-200 min-h-[32px]">
+          {orderedRows.map((row, idx) => {
+            if (row.type === 'subproyecto') {
+              const sp = row.item
+              return (
+                <div key={`sp-${sp.id}`} className="flex bg-[#2C3A43] border-b border-[#1e2a32] min-h-[32px]">
+                  <div className="w-48 shrink-0 px-2 py-1 text-xs font-bold text-white truncate border-r border-[#1e2a32] flex items-center">
+                    {sp.nombre}
+                  </div>
+                  <div className="flex-1 relative">
+                    {sp.fecha_inicio_plan && sp.fecha_fin_plan && (() => {
+                      const bar = calcBar(sp.fecha_inicio_plan, sp.fecha_fin_plan, diaInicioStr, diasEnMes)
+                      return bar ? <div className="absolute top-1 bottom-1 rounded opacity-40" style={{ ...bar, backgroundColor: '#fff' }} /> : null
+                    })()}
+                  </div>
+                </div>
+              )
+            }
+            if (row.type === 'fase') {
+              const f = row.item
+              const { inicio: faseInicio, fin: faseFin } = getRangoDeFase(f.id)
+              const fechaFinCalculada = faseFin || calcFechaFinFase(f.id, tareas) || f.fecha_fin_plan
+              const barFase = calcBar(faseInicio || f.fecha_inicio_plan, fechaFinCalculada, diaInicioStr, diasEnMes)
+              return (
+                <div key={`f-${f.id}`} className="flex bg-[#4E738A]/5 border-b border-gray-200 min-h-[32px]">
                   <div className="w-48 shrink-0 px-2 py-1 text-xs font-semibold text-[#4E738A] truncate border-r border-gray-200 flex items-center">
                     {f.nombre}
                   </div>
                   <div className="flex-1 relative">
                     {barFase && (
-                      <div
-                        className="absolute top-1 bottom-1 rounded opacity-30"
-                        style={{ ...barFase, backgroundColor: barColor(f.estado) }}
-                      />
+                      <div className="absolute top-1 bottom-1 rounded opacity-30"
+                        style={{ ...barFase, backgroundColor: barColor(f.estado) }} />
                     )}
                   </div>
                 </div>
-                {getTareasDeFase(f.id).map(t => (
-                  <FilaTarea key={t.id} t={t} labelPrefix="  └ " />
-                ))}
-              </div>
-            )
+              )
+            }
+            if (row.type === 'tarea') {
+              return <FilaTarea key={`t-${row.item.id}`} t={row.item} labelPrefix="  └ " />
+            }
+            return null
           })}
 
-          {tareasSinFase.map(t => (
+          {!tieneSubproyectos && tareasSinFase.map(t => (
             <FilaTarea key={t.id} t={t} labelPrefix="" />
           ))}
 
@@ -415,6 +484,7 @@ export default function GanttProyecto({ proyecto }) {
         >
           <p className="font-semibold text-[#2C3A43] mb-1">{tooltip.label}</p>
           <p className="text-gray-500">Estado: {tooltip.estado}</p>
+          {tooltip.avance !== undefined && <p className="text-gray-500">Avance: {tooltip.avance}%</p>}
           {tooltip.fechaInicio && <p className="text-gray-500">Inicio: {formatFecha(tooltip.fechaInicio)}</p>}
           {tooltip.fechaFin && <p className="text-gray-500">Fin: {formatFecha(tooltip.fechaFin)}</p>}
           {tooltip.recursoNombre && <p className="text-gray-500">Recurso: {tooltip.recursoNombre}</p>}

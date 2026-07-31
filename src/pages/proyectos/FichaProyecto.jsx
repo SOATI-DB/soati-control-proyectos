@@ -11,6 +11,7 @@ import {
   subirAdjuntoProyecto, descargarAdjuntoProyecto, eliminarAdjuntoProyecto,
   getIngenieros,
   getRecursosDisponibles, verificarDisponibilidad, asignarRecurso, eliminarRecurso, getRecursosTarea,
+  crearSubproyecto, actualizarSubproyecto, eliminarSubproyecto,
 } from '../../services/api'
 import GanttProyecto from './GanttProyecto'
 
@@ -66,6 +67,17 @@ export default function FichaProyecto() {
   const [subDispData, setSubDispData] = useState(null)
   const [subVerificando, setSubVerificando] = useState(false)
   const [pendingRecursos, setPendingRecursos] = useState([])
+  const [errorModal, setErrorModal] = useState(null)
+  const [errorSubForm, setErrorSubForm] = useState(null)
+
+  // Edición inline de recursos
+  const [editandoRecurso, setEditandoRecurso] = useState(null)
+  const [formRecurso, setFormRecurso] = useState({})
+
+  // Subproyectos modal
+  const [modalSP, setModalSP] = useState(null)
+  const [formSP, setFormSP] = useState({})
+  const [guardandoSP, setGuardandoSP] = useState(false)
 
   function cargar() {
     getProyecto(id)
@@ -144,6 +156,8 @@ export default function FichaProyecto() {
     setSubFormData({})
     setSubDispData(null)
     setPendingRecursos([])
+    setErrorModal(null)
+    setErrorSubForm(null)
     if (tipo === 'tarea' && item?.id) {
       getRecursosTarea(item.id)
         .then(data => setRecursosEnTarea(Array.isArray(data) ? data : []))
@@ -163,6 +177,15 @@ export default function FichaProyecto() {
   async function guardarSubFormRecurso() {
     const { tipo_recurso, recurso_id, fecha_inicio, fecha_fin, dedicacion_pct, forzar, conflicto_nota } = subFormData
     if (!recurso_id || !tipo_recurso || !fecha_inicio || !fecha_fin) return
+    if (fecha_inicio && modalForm.fecha_inicio) {
+      const fechaRecurso = new Date(`${fecha_inicio}T12:00:00`)
+      const fechaTarea   = new Date(`${modalForm.fecha_inicio}T12:00:00`)
+      if (fechaRecurso < fechaTarea) {
+        setErrorSubForm(`El recurso no puede iniciar (${fecha_inicio}) antes que la tarea (${modalForm.fecha_inicio})`)
+        return
+      }
+    }
+    setErrorSubForm(null)
     const recurso = recursosDisponibles.find(r => String(r.id) === String(recurso_id))
     const payload = {
       proyecto_id:    parseInt(id),
@@ -188,6 +211,18 @@ export default function FichaProyecto() {
   }
 
   async function confirmarModal() {
+    setErrorModal(null)
+    if (modal.tipo === 'tarea' && modalForm.fase_id && modalForm.fecha_inicio) {
+      const faseSeleccionada = (proyecto.fases || []).find(f => f.id === modalForm.fase_id)
+      if (faseSeleccionada?.fecha_inicio_plan) {
+        const fechaTarea = new Date(`${modalForm.fecha_inicio}T12:00:00`)
+        const fechaFase  = new Date(`${String(faseSeleccionada.fecha_inicio_plan).slice(0,10)}T12:00:00`)
+        if (fechaTarea < fechaFase) {
+          setErrorModal(`La tarea no puede iniciar (${modalForm.fecha_inicio}) antes que la fase "${faseSeleccionada.nombre}" (${String(faseSeleccionada.fecha_inicio_plan).slice(0,10)})`)
+          return
+        }
+      }
+    }
     setGuardandoModal(true)
     try {
       const { tipo, item } = modal
@@ -220,6 +255,48 @@ export default function FichaProyecto() {
     else if (tipo === 'contacto') await eliminarContacto(itemId)
     else if (tipo === 'hito') await eliminarHito(itemId)
     else if (tipo === 'adjunto') await eliminarAdjuntoProyecto(itemId)
+    await cargar()
+  }
+
+  async function guardarEdicionRecurso(recursoId) {
+    if (formRecurso.fecha_inicio && modalForm.fecha_inicio) {
+      const fechaRecurso = new Date(`${formRecurso.fecha_inicio}T12:00:00`)
+      const fechaTarea   = new Date(`${String(modalForm.fecha_inicio).slice(0,10)}T12:00:00`)
+      if (fechaRecurso < fechaTarea) {
+        setErrorSubForm(`El recurso no puede iniciar antes que la tarea (${String(modalForm.fecha_inicio).slice(0,10)})`)
+        return
+      }
+    }
+    const API = import.meta.env.VITE_API_URL ?? 'http://localhost:3011'
+    const hdrs = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('soati_shell_token')}` })
+    const r = await fetch(`${API}/api/recursos/${recursoId}`, {
+      method: 'PATCH', headers: hdrs(), body: JSON.stringify(formRecurso)
+    })
+    if (!r.ok) { setErrorSubForm('Error al actualizar recurso'); return }
+    setRecursosEnTarea(prev => prev.map(rec => rec.id === recursoId ? { ...rec, ...formRecurso } : rec))
+    setEditandoRecurso(null)
+    setErrorSubForm(null)
+  }
+
+  async function guardarSP() {
+    setGuardandoSP(true)
+    try {
+      if (modalSP === 'nuevo') {
+        await crearSubproyecto({ ...formSP, proyecto_id: parseInt(id) })
+      } else {
+        await actualizarSubproyecto(modalSP.id, formSP)
+      }
+      await cargar()
+      setModalSP(null)
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setGuardandoSP(false)
+    }
+  }
+
+  async function eliminarSP(spId) {
+    await eliminarSubproyecto(spId)
     await cargar()
   }
 
@@ -379,38 +456,93 @@ export default function FichaProyecto() {
       )}
 
       {/* TAB FASES */}
-      {tab === 'Fases' && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-medium text-[#2c3e50]">Fases ({proyecto.fases?.length || 0})</h3>
+      {tab === 'Fases' && (() => {
+        const sps = proyecto.subproyectos || []
+        const FilaFase = ({ f }) => (
+          <div className="border border-gray-100 rounded-lg p-4 flex items-center justify-between">
+            <div>
+              <p className="font-medium text-sm text-[#2c3e50]">{f.nombre}</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {formatFecha(f.fecha_inicio_plan)} — {formatFecha(f.fecha_fin_plan)} · {f.estado}
+                {f.responsable_nombre && ` · ${f.responsable_nombre}`}
+              </p>
+            </div>
             {puedeGestionar && (
-              <button onClick={() => abrirModal('fase')} className="text-xs text-[#4E738A] border border-[#4E738A] px-3 py-1.5 rounded-lg hover:bg-[#4E738A]/5">
-                + Agregar fase
-              </button>
+              <div className="flex gap-2">
+                <button onClick={() => abrirModal('fase', f)} className="text-xs text-gray-400 hover:text-[#4E738A]">Editar</button>
+                <button onClick={() => eliminar('fase', f.id)} className="text-xs text-gray-400 hover:text-red-500">Eliminar</button>
+              </div>
             )}
           </div>
-          <div className="space-y-3">
-            {(proyecto.fases || []).map(f => (
-              <div key={f.id} className="border border-gray-100 rounded-lg p-4 flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-sm text-[#2c3e50]">{f.nombre}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    {formatFecha(f.fecha_inicio_plan)} — {formatFecha(f.fecha_fin_plan)} · {f.estado}
-                    {f.responsable_nombre && ` · ${f.responsable_nombre}`}
-                  </p>
+        )
+        return (
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-medium text-[#2c3e50]">Fases ({proyecto.fases?.length || 0})</h3>
+              {puedeGestionar && (
+                <div className="flex gap-2">
+                  <button onClick={() => { setModalSP('nuevo'); setFormSP({}) }}
+                    className="text-xs text-gray-500 border border-gray-300 px-3 py-1.5 rounded-lg hover:bg-gray-50">
+                    + Subproyecto
+                  </button>
+                  <button onClick={() => abrirModal('fase')}
+                    className="text-xs text-[#4E738A] border border-[#4E738A] px-3 py-1.5 rounded-lg hover:bg-[#4E738A]/5">
+                    + Agregar fase
+                  </button>
                 </div>
-                {puedeGestionar && (
-                  <div className="flex gap-2">
-                    <button onClick={() => abrirModal('fase', f)} className="text-xs text-gray-400 hover:text-[#4E738A]">Editar</button>
-                    <button onClick={() => eliminar('fase', f.id)} className="text-xs text-gray-400 hover:text-red-500">Eliminar</button>
+              )}
+            </div>
+
+            {sps.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-5">
+                {sps.map(sp => (
+                  <div key={sp.id} className="flex items-center gap-1.5 bg-[#2C3A43] text-white text-xs px-3 py-1.5 rounded-full">
+                    <span>{sp.nombre}</span>
+                    {puedeGestionar && (
+                      <>
+                        <button
+                          onClick={() => { setModalSP(sp); setFormSP({ nombre: sp.nombre, descripcion: sp.descripcion || '', estado: sp.estado, responsable_id: sp.responsable_id || '', responsable_nombre: sp.responsable_nombre || '', fecha_inicio_plan: sp.fecha_inicio_plan?.slice(0,10) || '', fecha_fin_plan: sp.fecha_fin_plan?.slice(0,10) || '', notas: sp.notas || '' }) }}
+                          className="opacity-70 hover:opacity-100 text-[10px] ml-1">✎</button>
+                        <button onClick={() => eliminarSP(sp.id)} className="opacity-70 hover:opacity-100 ml-0.5 text-sm leading-none">×</button>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {sps.length > 0 ? (
+              <div className="space-y-5">
+                {sps.map(sp => {
+                  const fasesDelSP = (proyecto.fases || []).filter(f => f.subproyecto_id === sp.id)
+                  return (
+                    <div key={sp.id}>
+                      <div className="text-xs font-bold text-white bg-[#2C3A43] px-3 py-1.5 rounded-lg mb-2">{sp.nombre}</div>
+                      <div className="space-y-2 pl-2">
+                        {fasesDelSP.map(f => <FilaFase key={f.id} f={f} />)}
+                        {fasesDelSP.length === 0 && <p className="text-xs text-gray-400 pl-2 py-2">Sin fases asignadas</p>}
+                      </div>
+                    </div>
+                  )
+                })}
+                {(proyecto.fases || []).filter(f => !f.subproyecto_id).length > 0 && (
+                  <div>
+                    <div className="text-xs font-bold text-gray-600 bg-gray-100 px-3 py-1.5 rounded-lg mb-2">Sin subproyecto</div>
+                    <div className="space-y-2 pl-2">
+                      {(proyecto.fases || []).filter(f => !f.subproyecto_id).map(f => <FilaFase key={f.id} f={f} />)}
+                    </div>
                   </div>
                 )}
               </div>
-            ))}
-            {!proyecto.fases?.length && <p className="text-sm text-gray-400 text-center py-6">Sin fases</p>}
+            ) : (
+              <div className="space-y-3">
+                {(proyecto.fases || []).map(f => <FilaFase key={f.id} f={f} />)}
+                {!proyecto.fases?.length && <p className="text-sm text-gray-400 text-center py-6">Sin fases</p>}
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* TAB TAREAS */}
       {tab === 'Tareas' && (
@@ -432,8 +564,20 @@ export default function FichaProyecto() {
                     <span className={`text-xs px-1.5 py-0.5 rounded-full ${PRIORIDAD_ESTILOS[t.prioridad] || 'bg-gray-100 text-gray-500'}`}>{t.prioridad}</span>
                   </div>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    {t.estado} {t.asignado_nombre && `· ${t.asignado_nombre}`} {t.fecha_limite && `· ${formatFecha(t.fecha_limite)}`}
+                    {t.estado} {t.asignado_nombre && `· ${t.asignado_nombre}`} {t.fecha_limite && `· SLA: ${formatFecha(t.fecha_limite)}`}
+                    {t.avance > 0 && ` · ${t.avance}%`}
                   </p>
+                  {t.responsable && (
+                    <span className="text-[11px] text-gray-400">Resp: {t.responsable}</span>
+                  )}
+                  {(t.recursos || []).map(r => (
+                    <div key={r.id} className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1">
+                      <span>{r.usuario_nombre}</span>
+                      <span>·</span>
+                      <span>{formatFecha(r.fecha_inicio)} — {formatFecha(r.fecha_fin)}</span>
+                      <span>({r.dedicacion_pct}%)</span>
+                    </div>
+                  ))}
                 </div>
                 {puedeGestionar && (
                   <div className="flex gap-2">
@@ -625,6 +769,13 @@ export default function FichaProyecto() {
                   <select value={modalForm.estado || 'pendiente'} onChange={e => mf('estado', e.target.value)} className={inp()}>
                     {['pendiente','en_curso','completada','bloqueada'].map(e => <option key={e} value={e}>{e}</option>)}
                   </select></div>
+                {(proyecto.subproyectos || []).length > 0 && (
+                  <div><label className="block text-xs text-gray-500 mb-1">Subproyecto</label>
+                    <select value={modalForm.subproyecto_id || ''} onChange={e => mf('subproyecto_id', e.target.value ? parseInt(e.target.value) : null)} className={inp()}>
+                      <option value="">— Sin subproyecto —</option>
+                      {(proyecto.subproyectos || []).map(sp => <option key={sp.id} value={sp.id}>{sp.nombre}</option>)}
+                    </select></div>
+                )}
                 <div><label className="block text-xs text-gray-500 mb-1">Notas</label>
                   <textarea value={modalForm.notas || ''} onChange={e => mf('notas', e.target.value)} rows={2} className={inp()} /></div>
               </div>
@@ -639,7 +790,26 @@ export default function FichaProyecto() {
                 <div><label className="block text-xs text-gray-500 mb-1">Fase</label>
                   <select value={modalForm.fase_id || ''} onChange={e => mf('fase_id', e.target.value ? parseInt(e.target.value) : null)} className={inp()}>
                     <option value="">— Sin fase —</option>
-                    {(proyecto.fases || []).map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
+                    {(proyecto.subproyectos || []).length > 0 ? (
+                      <>
+                        {(proyecto.subproyectos || []).map(sp => {
+                          const fasesSP = (proyecto.fases || []).filter(f => f.subproyecto_id === sp.id)
+                          if (!fasesSP.length) return null
+                          return (
+                            <optgroup key={sp.id} label={sp.nombre}>
+                              {fasesSP.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
+                            </optgroup>
+                          )
+                        })}
+                        {(proyecto.fases || []).filter(f => !f.subproyecto_id).length > 0 && (
+                          <optgroup label="Sin subproyecto">
+                            {(proyecto.fases || []).filter(f => !f.subproyecto_id).map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
+                          </optgroup>
+                        )}
+                      </>
+                    ) : (
+                      (proyecto.fases || []).map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)
+                    )}
                   </select></div>
                 <div className="grid grid-cols-2 gap-3">
                   <div><label className="block text-xs text-gray-500 mb-1">Prioridad</label>
@@ -648,22 +818,45 @@ export default function FichaProyecto() {
                     </select></div>
                   <div><label className="block text-xs text-gray-500 mb-1">Estado</label>
                     <select value={modalForm.estado || 'pendiente'} onChange={e => mf('estado', e.target.value)} className={inp()}>
-                      {['pendiente','en_progreso','en_curso','completada','bloqueada','cancelada'].map(e => <option key={e} value={e}>{e}</option>)}
+                      {['pendiente','en_progreso','completada','bloqueada'].map(e => <option key={e} value={e}>{e}</option>)}
                     </select></div>
+                </div>
+                <div><label className="block text-xs text-gray-500 mb-1">Responsable</label>
+                  <input type="text" value={modalForm.responsable ?? ''} onChange={e => mf('responsable', e.target.value)}
+                    placeholder="Ej: PM, Ingeniero a cargo, Cliente, Logística..."
+                    className={inp()} /></div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Avance (%)</label>
+                  <input
+                    type="number" min="0" max="100"
+                    value={modalForm.avance ?? 0}
+                    onChange={e => {
+                      const val = Math.min(100, Math.max(0, parseInt(e.target.value) || 0))
+                      setModalForm(f => ({ ...f, avance: val, estado: val === 100 ? 'completada' : f.estado }))
+                    }}
+                    className={inp()}
+                  />
+                  <div className="mt-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full transition-all" style={{ width: `${modalForm.avance ?? 0}%`, backgroundColor: (modalForm.avance ?? 0) === 100 ? '#52a96e' : '#4E738A' }} />
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div><label className="block text-xs text-gray-500 mb-1">Fecha inicio</label>
                     <input type="date" value={modalForm.fecha_inicio?.slice(0,10) || ''} onChange={e => mf('fecha_inicio', e.target.value)} className={inp()} /></div>
-                  <div><label className="block text-xs text-gray-500 mb-1">Fecha límite</label>
-                    <input type="date" value={modalForm.fecha_limite?.slice(0,10) || ''} onChange={e => mf('fecha_limite', e.target.value)} className={inp()} /></div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Fecha límite (SLA)</label>
+                    <input type="date" value={modalForm.fecha_limite?.slice(0,10) || ''} onChange={e => mf('fecha_limite', e.target.value)} className={inp()} />
+                    <p className="text-[10px] text-gray-400 mt-0.5">Fecha máxima comprometida con el cliente</p>
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div><label className="block text-xs text-gray-500 mb-1">Duración (días)</label>
-                    <input type="number" min="1" value={modalForm.duracion_dias || ''}
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Duración estimada (días hábiles de trabajo)</label>
+                    <input type="number" min="0.1" step="0.1" value={modalForm.duracion_dias ?? ''}
                       onChange={e => {
                         const v = e.target.value
                         setModalForm(f => {
-                          const next = { ...f, duracion_dias: v ? parseInt(v) : null }
+                          const next = { ...f, duracion_dias: v ? parseFloat(v) : null }
                           if (v && f.fecha_inicio) {
                             const fin = new Date(f.fecha_inicio)
                             fin.setDate(fin.getDate() + parseInt(v) - 1)
@@ -672,7 +865,9 @@ export default function FichaProyecto() {
                           return next
                         })
                       }}
-                      className={inp()} /></div>
+                      className={inp()} />
+                    <p className="text-[10px] text-gray-400 mt-0.5">Tiempo real de ejecución desde la fecha de inicio</p>
+                  </div>
                   <div><label className="block text-xs text-gray-500 mb-1">Tarea predecesora</label>
                     <select value={modalForm.tarea_predecesora_id || ''}
                       onChange={e => mf('tarea_predecesora_id', e.target.value ? parseInt(e.target.value) : null)}
@@ -698,24 +893,83 @@ export default function FichaProyecto() {
                   </div>
 
                   {recursosEnTarea.length > 0 && (
-                    <div className="space-y-1 mb-2">
+                    <div className="space-y-1.5 mb-2">
                       {recursosEnTarea.map(r => (
-                        <div key={r.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-2 py-1.5 text-xs">
-                          <span className="text-[#2c3e50]">{r.usuario_nombre} · {r.tipo_recurso} · {r.dedicacion_pct}%</span>
-                          {String(r.id).startsWith('pending_')
-                            ? <button type="button"
-                                onClick={() => {
-                                  const key = r.id
-                                  setRecursosEnTarea(list => list.filter(x => x.id !== key))
-                                  setPendingRecursos(list => list.filter((_, i) =>
-                                    recursosEnTarea.filter(x => String(x.id).startsWith('pending_')).indexOf(r) !== i
-                                  ))
-                                }}
-                                className="text-gray-400 hover:text-red-500 ml-2">✕</button>
-                            : <button type="button"
-                                onClick={async () => { await eliminarRecurso(r.id); setRecursosEnTarea(list => list.filter(x => x.id !== r.id)) }}
-                                className="text-gray-400 hover:text-red-500 ml-2">✕</button>
-                          }
+                        <div key={r.id} className="border border-gray-100 rounded-lg p-2">
+                          {editandoRecurso === r.id ? (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-medium text-[#2C3A43]">{r.usuario_nombre} · {r.tipo_recurso}</span>
+                                <button type="button" onClick={() => { setEditandoRecurso(null); setErrorSubForm(null) }}
+                                  className="text-xs text-gray-400 hover:text-gray-600">Cancelar</button>
+                              </div>
+                              <div className="grid grid-cols-3 gap-2">
+                                <div>
+                                  <label className="block text-[10px] text-gray-500 mb-0.5">Fecha inicio</label>
+                                  <input type="date" value={formRecurso.fecha_inicio ?? ''}
+                                    onChange={e => setFormRecurso(f => ({ ...f, fecha_inicio: e.target.value }))}
+                                    className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-[#4E738A]" />
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] text-gray-500 mb-0.5">Fecha fin</label>
+                                  <input type="date" value={formRecurso.fecha_fin ?? ''}
+                                    onChange={e => setFormRecurso(f => ({ ...f, fecha_fin: e.target.value }))}
+                                    className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-[#4E738A]" />
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] text-gray-500 mb-0.5">Dedicación (%)</label>
+                                  <input type="number" min="1" max="100" value={formRecurso.dedicacion_pct ?? 100}
+                                    onChange={e => setFormRecurso(f => ({ ...f, dedicacion_pct: parseInt(e.target.value) || 100 }))}
+                                    className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-[#4E738A]" />
+                                </div>
+                              </div>
+                              <div className="flex justify-end">
+                                <button type="button" onClick={() => guardarEdicionRecurso(r.id)}
+                                  className="text-xs bg-[#4E738A] text-white px-3 py-1 rounded hover:bg-[#3d5c70]">
+                                  Guardar
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <span className="text-xs text-[#2C3A43]">{r.usuario_nombre} · {r.tipo_recurso} · {r.dedicacion_pct}%</span>
+                                <div className="text-[11px] text-gray-400 mt-0.5">
+                                  {r.fecha_inicio ? formatFecha(r.fecha_inicio) : '—'} → {r.fecha_fin ? formatFecha(r.fecha_fin) : '—'}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 ml-3 shrink-0">
+                                {!String(r.id).startsWith('pending_') && (
+                                  <button type="button"
+                                    onClick={() => {
+                                      setFormRecurso({
+                                        fecha_inicio:   r.fecha_inicio ? String(r.fecha_inicio).slice(0,10) : '',
+                                        fecha_fin:      r.fecha_fin    ? String(r.fecha_fin).slice(0,10)    : '',
+                                        dedicacion_pct: r.dedicacion_pct ?? 100
+                                      })
+                                      setEditandoRecurso(r.id)
+                                    }}
+                                    className="text-xs text-[#4E738A] hover:underline">
+                                    Editar
+                                  </button>
+                                )}
+                                {String(r.id).startsWith('pending_')
+                                  ? <button type="button"
+                                      onClick={() => {
+                                        const key = r.id
+                                        setRecursosEnTarea(list => list.filter(x => x.id !== key))
+                                        setPendingRecursos(list => list.filter((_, i) =>
+                                          recursosEnTarea.filter(x => String(x.id).startsWith('pending_')).indexOf(r) !== i
+                                        ))
+                                      }}
+                                      className="text-gray-400 hover:text-red-500 text-lg leading-none">×</button>
+                                  : <button type="button"
+                                      onClick={async () => { await eliminarRecurso(r.id); setRecursosEnTarea(list => list.filter(x => x.id !== r.id)) }}
+                                      className="text-gray-400 hover:text-red-500 text-lg leading-none">×</button>
+                                }
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -788,12 +1042,15 @@ export default function FichaProyecto() {
                             </div>
                       )}
 
+                      {errorSubForm && (
+                        <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-2 py-1.5">{errorSubForm}</p>
+                      )}
                       <div className="flex gap-2 pt-1">
                         <button type="button" onClick={guardarSubFormRecurso}
                           className="px-3 py-1.5 text-xs bg-[#4E738A] text-white rounded-lg hover:bg-[#3d5c70]">
                           Agregar
                         </button>
-                        <button type="button" onClick={() => { setSubFormVisible(false); setSubFormData({}); setSubDispData(null) }}
+                        <button type="button" onClick={() => { setSubFormVisible(false); setSubFormData({}); setSubDispData(null); setErrorSubForm(null) }}
                           className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">
                           Cancelar
                         </button>
@@ -840,12 +1097,61 @@ export default function FichaProyecto() {
               </div>
             )}
 
+            {errorModal && (
+              <div className="mt-3 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                {errorModal}
+              </div>
+            )}
             <div className="flex justify-end gap-2 mt-6">
               <button onClick={() => setModal(null)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">
                 Cancelar
               </button>
               <button onClick={confirmarModal} disabled={guardandoModal} className="px-4 py-2 text-sm bg-[#4E738A] text-white rounded-lg hover:bg-[#3d5c70] disabled:opacity-40">
                 {guardandoModal ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modal Subproyecto */}
+      {modalSP && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center px-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+            <h3 className="font-semibold text-[#2c3e50] mb-4">
+              {modalSP === 'nuevo' ? 'Nuevo subproyecto' : `Editar: ${modalSP.nombre}`}
+            </h3>
+            <div className="space-y-3">
+              <div><label className="block text-xs text-gray-500 mb-1">Nombre *</label>
+                <input value={formSP.nombre || ''} onChange={e => setFormSP(f => ({ ...f, nombre: e.target.value }))} className={inp()} /></div>
+              <div><label className="block text-xs text-gray-500 mb-1">Descripción</label>
+                <textarea value={formSP.descripcion || ''} onChange={e => setFormSP(f => ({ ...f, descripcion: e.target.value }))} rows={2} className={inp()} /></div>
+              <div><label className="block text-xs text-gray-500 mb-1">Estado</label>
+                <select value={formSP.estado || 'pendiente'} onChange={e => setFormSP(f => ({ ...f, estado: e.target.value }))} className={inp()}>
+                  {['pendiente','en_progreso','completada','bloqueada'].map(e => <option key={e} value={e}>{e}</option>)}
+                </select></div>
+              <div><label className="block text-xs text-gray-500 mb-1">Responsable</label>
+                <select value={formSP.responsable_id || ''} onChange={e => {
+                  const u = ingenieros.find(x => String(x.id) === e.target.value)
+                  setFormSP(f => ({ ...f, responsable_id: e.target.value, responsable_nombre: u?.nombre || '' }))
+                }} className={inp()}>
+                  <option value="">— Sin responsable —</option>
+                  {ingenieros.map(u => <option key={u.id} value={String(u.id)}>{u.nombre}</option>)}
+                </select></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="block text-xs text-gray-500 mb-1">Fecha inicio plan</label>
+                  <input type="date" value={formSP.fecha_inicio_plan || ''} onChange={e => setFormSP(f => ({ ...f, fecha_inicio_plan: e.target.value }))} className={inp()} /></div>
+                <div><label className="block text-xs text-gray-500 mb-1">Fecha fin plan</label>
+                  <input type="date" value={formSP.fecha_fin_plan || ''} onChange={e => setFormSP(f => ({ ...f, fecha_fin_plan: e.target.value }))} className={inp()} /></div>
+              </div>
+              <div><label className="block text-xs text-gray-500 mb-1">Notas</label>
+                <textarea value={formSP.notas || ''} onChange={e => setFormSP(f => ({ ...f, notas: e.target.value }))} rows={2} className={inp()} /></div>
+            </div>
+            <div className="flex justify-end gap-2 mt-6">
+              <button onClick={() => setModalSP(null)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">
+                Cancelar
+              </button>
+              <button onClick={guardarSP} disabled={guardandoSP || !formSP.nombre?.trim()} className="px-4 py-2 text-sm bg-[#2C3A43] text-white rounded-lg hover:bg-[#1e2a32] disabled:opacity-40">
+                {guardandoSP ? 'Guardando...' : 'Guardar'}
               </button>
             </div>
           </div>

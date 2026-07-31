@@ -54,7 +54,7 @@ export default function CalendarioRecursos() {
   const usuarios = Object.values(usuariosMap).sort((a, b) => a.nombre.localeCompare(b.nombre))
 
   function diaOcupado(asig, dia) {
-    const d = new Date(year, month, dia)
+    const d = new Date(year, month, dia, 12, 0, 0)
     const fi = new Date(`${String(asig.fecha_inicio).slice(0, 10)}T12:00:00`)
     const ff = new Date(`${String(asig.fecha_fin).slice(0, 10)}T12:00:00`)
     return d >= fi && d <= ff
@@ -122,7 +122,7 @@ export default function CalendarioRecursos() {
 
         {/* Filas por usuario */}
         {usuarios.map(u => (
-          <div key={u.nombre} className="flex border-b border-gray-100 min-h-[36px]">
+          <div key={u.nombre} className="flex border-b border-gray-100 min-h-[40px]">
             <div className="w-40 shrink-0 px-2 py-1 text-xs text-[#2C3A43] font-medium truncate border-r border-gray-200 flex items-center">
               {u.nombre}
             </div>
@@ -130,20 +130,21 @@ export default function CalendarioRecursos() {
               {dias.map(d => {
                 const fecha = new Date(year, month, d)
                 const esFinde = fecha.getDay() === 0 || fecha.getDay() === 6
-                const asig = u.asignaciones.find(a => diaOcupado(a, d))
+                const asigs = u.asignaciones.filter(a => diaOcupado(a, d))
                 return (
                   <div
                     key={d}
-                    className={`flex-1 min-w-[28px] border-r border-gray-100 flex items-center justify-center ${esFinde ? 'bg-gray-50' : ''}`}
-                    onMouseEnter={asig ? e => setTooltip({ x: e.clientX, y: e.clientY, asig }) : undefined}
-                    onMouseLeave={() => setTooltip(null)}
+                    className={`flex-1 min-w-[28px] border-r border-gray-100 flex flex-col items-center justify-center gap-px py-0.5 ${esFinde ? 'bg-gray-50' : ''}`}
                   >
-                    {asig && (
+                    {asigs.map((asig, i) => (
                       <div
-                        className="w-full h-5 mx-px rounded-sm cursor-pointer"
-                        style={{ backgroundColor: colorProyecto(asig.codigo) }}
+                        key={i}
+                        className="w-full mx-px rounded-sm cursor-pointer"
+                        style={{ backgroundColor: colorProyecto(asig.codigo), height: '10px' }}
+                        onMouseEnter={e => setTooltip({ x: e.clientX, y: e.clientY, asig })}
+                        onMouseLeave={() => setTooltip(null)}
                       />
-                    )}
+                    ))}
                   </div>
                 )
               })}

@@ -42,6 +42,20 @@ export const actualizarFase = (id, data) =>
 export const eliminarFase = (id) =>
   fetch(`${BASE}/api/fases/${id}`, { method: 'DELETE', headers: headers() }).then(r => r.json())
 
+// Subproyectos
+export const crearSubproyecto = (data) =>
+  fetch(`${BASE}/api/subproyectos`, {
+    method: 'POST', headers: headers(), body: JSON.stringify(data),
+  }).then(r => r.json())
+
+export const actualizarSubproyecto = (id, data) =>
+  fetch(`${BASE}/api/subproyectos/${id}`, {
+    method: 'PATCH', headers: headers(), body: JSON.stringify(data),
+  }).then(r => r.json())
+
+export const eliminarSubproyecto = (id) =>
+  fetch(`${BASE}/api/subproyectos/${id}`, { method: 'DELETE', headers: headers() }).then(r => r.json())
+
 // Tareas
 export const getTareas = (proyectoId, params = {}) => {
   const qs = new URLSearchParams(params).toString()
