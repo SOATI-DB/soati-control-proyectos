@@ -70,6 +70,8 @@ export default function FichaProyecto() {
   const [errorModal, setErrorModal] = useState(null)
   const [errorSubForm, setErrorSubForm] = useState(null)
 
+  const [filtroFase, setFiltroFase] = useState('')
+
   // Edición inline de recursos
   const [editandoRecurso, setEditandoRecurso] = useState(null)
   const [formRecurso, setFormRecurso] = useState({})
@@ -555,8 +557,35 @@ export default function FichaProyecto() {
               </button>
             )}
           </div>
+          {(proyecto.fases || []).length > 0 && (
+            <div className="mb-3 flex items-center gap-2">
+              <label className="text-xs text-gray-500 shrink-0">Fase:</label>
+              <select
+                value={filtroFase}
+                onChange={e => setFiltroFase(e.target.value)}
+                className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-[#4E738A] flex-1 max-w-xs"
+              >
+                <option value="">Todas</option>
+                <option value="__sin_fase__">Sin fase</option>
+                {(proyecto.fases || []).map(f => (
+                  <option key={f.id} value={String(f.id)}>{f.nombre}</option>
+                ))}
+              </select>
+              {filtroFase && (
+                <button onClick={() => setFiltroFase('')} className="text-xs text-gray-400 hover:text-gray-600">
+                  Limpiar
+                </button>
+              )}
+            </div>
+          )}
           <div className="space-y-2">
-            {(proyecto.tareas || []).map(t => (
+            {(proyecto.tareas || [])
+              .filter(t => {
+                if (!filtroFase) return true
+                if (filtroFase === '__sin_fase__') return !t.fase_id
+                return String(t.fase_id) === filtroFase
+              })
+              .map(t => (
               <div key={t.id} className="border border-gray-100 rounded-lg p-3 flex items-center justify-between">
                 <div>
                   <div className="flex items-center gap-2">
@@ -596,7 +625,7 @@ export default function FichaProyecto() {
       {tab === 'Gantt' && (
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h3 className="font-medium text-[#2c3e50] mb-4">Gantt del proyecto</h3>
-          <GanttProyecto proyecto={proyecto} />
+          <GanttProyecto proyecto={proyecto} onEditarTarea={(t) => abrirModal('tarea', t)} />
         </div>
       )}
 

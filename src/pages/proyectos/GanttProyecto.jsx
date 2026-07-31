@@ -7,7 +7,7 @@ function calcFechaFinFase(faseId, tareas) {
   const fechasFin = tareasDeFase.map(t => {
     if (t.fecha_inicio && t.duracion_dias) {
       const fi = new Date(`${String(t.fecha_inicio).slice(0,10)}T12:00:00`)
-      fi.setDate(fi.getDate() + parseInt(t.duracion_dias) - 1)
+      fi.setDate(fi.getDate() + Math.max(1, Math.ceil(parseFloat(t.duracion_dias))) - 1)
       return fi
     }
     if (t.fecha_limite) return new Date(`${String(t.fecha_limite).slice(0,10)}T12:00:00`)
@@ -34,7 +34,7 @@ function calcBarDuracion(fechaInicio, duracion, diaInicioStr, totalDias) {
   if (!fechaInicio || !duracion) return null
   const fi = new Date(`${String(fechaInicio).slice(0, 10)}T12:00:00`)
   const ff = new Date(fi)
-  ff.setDate(ff.getDate() + parseInt(duracion) - 1)
+  ff.setDate(ff.getDate() + Math.max(1, Math.ceil(parseFloat(duracion))) - 1)
   const fechaFin = `${ff.getFullYear()}-${String(ff.getMonth() + 1).padStart(2, '0')}-${String(ff.getDate()).padStart(2, '0')}`
   return calcBar(fechaInicio, fechaFin, diaInicioStr, totalDias)
 }
@@ -44,13 +44,13 @@ function calcBar(fechaInicio, fechaFin, diaInicio, totalDias) {
   const fi = new Date(`${String(fechaInicio).slice(0, 10)}T12:00:00`)
   const ff = new Date(`${String(fechaFin).slice(0, 10)}T12:00:00`)
   const ref = new Date(`${diaInicio}T12:00:00`)
-  const finMes = new Date(ref.getFullYear(), ref.getMonth() + 1, 0, 12, 0, 0)
+  const finRango = new Date(ref.getTime() + (totalDias - 1) * 86400000)
 
   if (ff < ref) return null
-  if (fi > finMes) return null
+  if (fi > finRango) return null
 
   const inicioEfectivo = fi < ref ? ref : fi
-  const finEfectivo    = ff > finMes ? finMes : ff
+  const finEfectivo    = ff > finRango ? finRango : ff
 
   const offsetDias = Math.floor((inicioEfectivo - ref) / 86400000)
   const duracion   = Math.max(1, Math.floor((finEfectivo - inicioEfectivo) / 86400000) + 1)
@@ -62,7 +62,7 @@ function calcBar(fechaInicio, fechaFin, diaInicio, totalDias) {
   return { left: `${left}%`, width: `${width}%` }
 }
 
-export default function GanttProyecto({ proyecto }) {
+export default function GanttProyecto({ proyecto, onEditarTarea }) {
   const hoy = new Date()
   const [mesOffset, setMesOffset] = useState(0)
   const [tooltip, setTooltip] = useState(null)
@@ -72,11 +72,30 @@ export default function GanttProyecto({ proyecto }) {
   const barAreaRef = useRef(null)
 
   const mesBase = new Date(hoy.getFullYear(), hoy.getMonth() + mesOffset, 1)
-  const year = mesBase.getFullYear()
+  const year  = mesBase.getFullYear()
   const month = mesBase.getMonth()
-  const diasEnMes = new Date(year, month + 1, 0).getDate()
-  const dias = Array.from({ length: diasEnMes }, (_, i) => i + 1)
-  const diaInicioStr = `${year}-${String(month + 1).padStart(2,'0')}-01`
+
+  const PADDING_DIAS = 5
+  const primerDiaMes = new Date(year, month, 1)
+  const ultimoDiaMes = new Date(year, month + 1, 0)
+
+  const fechaRangoInicio = new Date(primerDiaMes)
+  fechaRangoInicio.setDate(fechaRangoInicio.getDate() - PADDING_DIAS)
+
+  const fechaRangoFin = new Date(ultimoDiaMes)
+  fechaRangoFin.setDate(fechaRangoFin.getDate() + PADDING_DIAS)
+
+  const totalDiasRango = Math.round((fechaRangoFin - fechaRangoInicio) / 86400000) + 1
+
+  const diasRango = Array.from({ length: totalDiasRango }, (_, i) => {
+    const d = new Date(fechaRangoInicio)
+    d.setDate(d.getDate() + i)
+    return d
+  })
+
+  // Compatibilidad con calcBar y calcBarDuracion
+  const diasEnMes = totalDiasRango
+  const diaInicioStr = `${fechaRangoInicio.getFullYear()}-${String(fechaRangoInicio.getMonth()+1).padStart(2,'0')}-${String(fechaRangoInicio.getDate()).padStart(2,'0')}`
 
   const mesLabel = mesBase.toLocaleDateString('es-CR', { month: 'long', year: 'numeric' })
 
@@ -115,7 +134,7 @@ export default function GanttProyecto({ proyecto }) {
       if (t.fecha_limite) return t.fecha_limite
       if (t.duracion_dias) {
         const fi = new Date(`${t.fecha_inicio}T12:00:00`)
-        fi.setDate(fi.getDate() + t.duracion_dias - 1)
+        fi.setDate(fi.getDate() + Math.max(1, Math.ceil(parseFloat(t.duracion_dias))) - 1)
         return `${fi.getFullYear()}-${String(fi.getMonth() + 1).padStart(2, '0')}-${String(fi.getDate()).padStart(2, '0')}`
       }
       return null
@@ -145,7 +164,7 @@ export default function GanttProyecto({ proyecto }) {
         for (const t of getTareasDeFase(f.id)) {
           orderedRows.push({ type: 'tarea', item: t })
           for (const r of (t.recursos || [])) {
-            orderedRows.push({ type: 'recurso', item: r, tarea: t })
+            if (incluirRecurso) orderedRows.push({ type: 'recurso', item: r, tarea: t })
           }
         }
       }
@@ -227,13 +246,20 @@ export default function GanttProyecto({ proyecto }) {
 
   // Columnas de días (reutilizadas en cada fila)
   function DiasCols() {
-    return dias.map(d => (
-      <div
-        key={d}
-        className="absolute top-0 bottom-0 border-r border-gray-100"
-        style={{ left: `${((d - 1) / diasEnMes) * 100}%`, width: `${(1 / diasEnMes) * 100}%` }}
-      />
-    ))
+    return diasRango.map((fecha, i) => {
+      const esMesActual = fecha.getMonth() === month && fecha.getFullYear() === year
+      return (
+        <div
+          key={i}
+          className="absolute top-0 bottom-0 border-r border-gray-100"
+          style={{
+            left: `${(i / totalDiasRango) * 100}%`,
+            width: `${(1 / totalDiasRango) * 100}%`,
+            backgroundColor: esMesActual ? 'transparent' : 'rgba(0,0,0,0.02)',
+          }}
+        />
+      )
+    })
   }
 
   function FilaBar({ label, fechaInicio, fechaFin, duracion, estado, recursoNombre, dedicacion }) {
@@ -272,7 +298,11 @@ export default function GanttProyecto({ proyecto }) {
     return (
       <Fragment>
         <div className="flex border-b border-gray-100 min-h-[32px]">
-          <div className="w-48 shrink-0 px-2 py-1 text-xs text-[#2C3A43] truncate border-r border-gray-200 flex items-center gap-1">
+          <div
+            className="w-48 shrink-0 px-2 py-1 text-xs text-[#2C3A43] truncate border-r border-gray-200 flex items-center gap-1 cursor-pointer hover:text-[#4E738A] hover:bg-[#4E738A]/5 transition-colors"
+            onClick={() => onEditarTarea && onEditarTarea(t)}
+            title="Clic para editar"
+          >
             {estaVencida && <span className="w-2 h-2 rounded-full bg-red-500 shrink-0 flex-none" title="SLA vencido" />}
             <span className="truncate">{labelPrefix}{t.titulo}</span>
           </div>
@@ -290,13 +320,14 @@ export default function GanttProyecto({ proyecto }) {
               <div
                 className="absolute top-1 bottom-1 rounded cursor-pointer transition-opacity hover:opacity-80"
                 style={{ left: barPrincipal.left, width: barPrincipal.width, backgroundColor: colorFinal }}
+                onClick={() => onEditarTarea && onEditarTarea(t)}
                 onMouseEnter={e => setTooltip({ x: e.clientX, y: e.clientY, label: t.titulo, estado: t.estado, fechaInicio: t.fecha_inicio, fechaFin: t.fecha_limite, avance: t.avance })}
                 onMouseLeave={() => setTooltip(null)}
               />
             )}
           </div>
         </div>
-        {recursos.map(r => (
+        {incluirRecurso && recursos.map(r => (
           <FilaBar
             key={r.id}
             label={`     └─ ${r.usuario_nombre} (${r.dedicacion_pct}%)`}
@@ -374,15 +405,28 @@ export default function GanttProyecto({ proyecto }) {
             Fase / Tarea
           </div>
           <div className="flex-1 relative min-h-[28px]" ref={barAreaRef}>
-            {dias.map(d => (
-              <div
-                key={d}
-                className="absolute top-0 bottom-0 flex items-center justify-center text-[10px] text-gray-400 border-r border-gray-200"
-                style={{ left: `${((d - 1) / diasEnMes) * 100}%`, width: `${(1 / diasEnMes) * 100}%` }}
-              >
-                {d % 5 === 1 || d === 1 ? d : ''}
-              </div>
-            ))}
+            {diasRango.map((fecha, i) => {
+              const esMesActual = fecha.getMonth() === month && fecha.getFullYear() === year
+              const esPrimeroDeMes = fecha.getDate() === 1
+              const label = esPrimeroDeMes
+                ? `${fecha.getDate()}/${fecha.getMonth()+1}`
+                : (fecha.getDate() % 5 === 1 ? fecha.getDate() : '')
+              return (
+                <div
+                  key={i}
+                  className="absolute top-0 bottom-0 flex items-center justify-center text-[10px] border-r border-gray-200"
+                  style={{
+                    left: `${(i / totalDiasRango) * 100}%`,
+                    width: `${(1 / totalDiasRango) * 100}%`,
+                    color: esMesActual ? '#6b7280' : '#c4c9d0',
+                    backgroundColor: esMesActual ? 'transparent' : '#fafafa',
+                    fontWeight: esPrimeroDeMes ? '600' : 'normal',
+                  }}
+                >
+                  {label}
+                </div>
+              )
+            })}
           </div>
         </div>
 
