@@ -859,7 +859,7 @@ export default function FichaProyecto() {
                           const next = { ...f, duracion_dias: v ? parseFloat(v) : null }
                           if (v && f.fecha_inicio) {
                             const fin = new Date(f.fecha_inicio)
-                            fin.setDate(fin.getDate() + parseInt(v) - 1)
+                            fin.setDate(fin.getDate() + Math.max(1, Math.ceil(parseFloat(v))) - 1)
                             next.fecha_limite = fin.toISOString().split('T')[0]
                           }
                           return next
