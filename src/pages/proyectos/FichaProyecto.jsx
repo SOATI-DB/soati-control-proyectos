@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import { formatFecha, formatFechaHora } from '../../utils/fecha'
@@ -81,6 +81,17 @@ export default function FichaProyecto() {
   const [formSP, setFormSP] = useState({})
   const [guardandoSP, setGuardandoSP] = useState(false)
 
+  const tareasDisponiblesComoPredecesoras = useMemo(() => {
+    const todasTareas = (proyecto?.tareas || []).filter(t => t.activo !== 0 && t.id !== modalForm.id)
+    if (!modalForm.fase_id || !proyecto?.subproyectos?.length) return todasTareas
+    const faseSeleccionada = (proyecto?.fases || []).find(f => String(f.id) === String(modalForm.fase_id))
+    if (!faseSeleccionada?.subproyecto_id) return todasTareas
+    const fasesDelSubproyecto = (proyecto?.fases || [])
+      .filter(f => f.subproyecto_id === faseSeleccionada.subproyecto_id)
+      .map(f => f.id)
+    return todasTareas.filter(t => !t.fase_id || fasesDelSubproyecto.includes(t.fase_id))
+  }, [modalForm.fase_id, modalForm.id, proyecto?.tareas, proyecto?.fases, proyecto?.subproyectos])
+
   function cargar() {
     getProyecto(id)
       .then(data => { setProyecto(data); setCargando(false) })
@@ -100,7 +111,7 @@ export default function FichaProyecto() {
       return
     }
     setVerificandoDisp(true)
-    const resultado = await verificarDisponibilidad(recurso_id, fecha_inicio_recurso, fecha_fin_recurso, form.id || null)
+    const resultado = await verificarDisponibilidad(recurso_id, fecha_inicio_recurso, fecha_fin_recurso, form.id || null, id)
     setDisponibilidad(resultado)
     setVerificandoDisp(false)
   }
@@ -151,7 +162,22 @@ export default function FichaProyecto() {
 
   function abrirModal(tipo, item = null) {
     setModal({ tipo, item })
-    setModalForm(item ? { ...item } : {})
+    if (tipo === 'tarea' && item) {
+      const ids = (() => {
+        try {
+          const parsed = typeof item.predecesoras_ids === 'string'
+            ? JSON.parse(item.predecesoras_ids)
+            : (item.predecesoras_ids || [])
+          if (item.tarea_predecesora_id && !parsed.includes(String(item.tarea_predecesora_id))) {
+            parsed.push(String(item.tarea_predecesora_id))
+          }
+          return parsed
+        } catch { return [] }
+      })()
+      setModalForm({ ...item, predecesoras_ids: ids })
+    } else {
+      setModalForm(item ? { ...item } : {})
+    }
     setDisponibilidad(null)
     setRecursosEnTarea([])
     setSubFormVisible(false)
@@ -171,7 +197,7 @@ export default function FichaProyecto() {
     const { recurso_id, fecha_inicio, fecha_fin } = form
     if (!recurso_id || !fecha_inicio || !fecha_fin) { setSubDispData(null); return }
     setSubVerificando(true)
-    const r = await verificarDisponibilidad(recurso_id, fecha_inicio, fecha_fin, modal?.item?.id || null)
+    const r = await verificarDisponibilidad(recurso_id, fecha_inicio, fecha_fin, modal?.item?.id || null, id)
     setSubDispData(r)
     setSubVerificando(false)
   }
@@ -599,6 +625,17 @@ export default function FichaProyecto() {
                   {t.responsable && (
                     <span className="text-[11px] text-gray-400">Resp: {t.responsable}</span>
                   )}
+                  {(() => {
+                    let ids = []
+                    try { ids = JSON.parse(t.predecesoras_ids || '[]') } catch {}
+                    if (t.tarea_predecesora_id && !ids.includes(String(t.tarea_predecesora_id))) ids.push(String(t.tarea_predecesora_id))
+                    if (!ids.length) return null
+                    const nombres = ids.map(id => {
+                      const pred = (proyecto.tareas || []).find(tt => String(tt.id) === String(id))
+                      return pred?.titulo || `#${id}`
+                    })
+                    return <span className="text-[11px] text-gray-400">Pred: {nombres.join(', ')}</span>
+                  })()}
                   {(t.recursos || []).map(r => (
                     <div key={r.id} className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1">
                       <span>{r.usuario_nombre}</span>
@@ -897,15 +934,39 @@ export default function FichaProyecto() {
                       className={inp()} />
                     <p className="text-[10px] text-gray-400 mt-0.5">Tiempo real de ejecución desde la fecha de inicio</p>
                   </div>
-                  <div><label className="block text-xs text-gray-500 mb-1">Tarea predecesora</label>
-                    <select value={modalForm.tarea_predecesora_id || ''}
-                      onChange={e => mf('tarea_predecesora_id', e.target.value ? parseInt(e.target.value) : null)}
-                      className={inp()}>
-                      <option value="">— Sin predecesora —</option>
-                      {(proyecto.tareas || []).filter(t => t.id !== modal.item?.id).map(t =>
-                        <option key={t.id} value={t.id}>{t.titulo}</option>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Tareas predecesoras</label>
+                    <div className="border border-gray-200 rounded-lg max-h-36 overflow-y-auto divide-y divide-gray-100">
+                      {tareasDisponiblesComoPredecesoras.length === 0 ? (
+                        <p className="text-xs text-gray-400 p-2">No hay tareas disponibles</p>
+                      ) : (
+                        tareasDisponiblesComoPredecesoras.map(t => {
+                          const seleccionada = (modalForm.predecesoras_ids || []).includes(String(t.id))
+                          return (
+                            <label key={t.id} className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={seleccionada}
+                                onChange={e => {
+                                  const ids = modalForm.predecesoras_ids || []
+                                  const idStr = String(t.id)
+                                  mf('predecesoras_ids', e.target.checked ? [...ids, idStr] : ids.filter(id => id !== idStr))
+                                }}
+                                className="rounded border-gray-300 text-[#4E738A] focus:ring-[#4E738A]"
+                              />
+                              <span className="text-xs text-gray-700 truncate">{t.titulo}</span>
+                            </label>
+                          )
+                        })
                       )}
-                    </select></div>
+                    </div>
+                    {(modalForm.predecesoras_ids || []).length > 0 && (
+                      <button type="button" onClick={() => mf('predecesoras_ids', [])}
+                        className="text-xs text-gray-400 hover:text-gray-600 mt-1">
+                        Limpiar selección
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Sección recursos */}
