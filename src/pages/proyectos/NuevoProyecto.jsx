@@ -39,6 +39,7 @@ export default function NuevoProyecto() {
   const [mostrarLista,   setMostrarLista]   = useState(false)
 
   const [form, setForm] = useState({
+    es_interno:         false,
     codigo:             '',
     nombre:             '',
     tipo_contratacion:  'contratacion_privada',
@@ -109,11 +110,13 @@ export default function NuevoProyecto() {
 
   function validar() {
     const e = {}
-    if (!form.codigo.trim())         e.codigo         = 'Requerido'
-    if (!form.nombre.trim())         e.nombre         = 'Requerido'
-    if (!form.tipo_contratacion)     e.tipo_contratacion = 'Requerido'
-    if (!form.cliente_nombre.trim()) e.cliente_nombre = 'Requerido'
-    if (!form.cliente_codigo.trim()) e.cliente_codigo = 'Requerido'
+    if (!form.nombre.trim()) e.nombre = 'Requerido'
+    if (!form.es_interno) {
+      if (!form.codigo.trim())         e.codigo         = 'Requerido'
+      if (!form.tipo_contratacion)     e.tipo_contratacion = 'Requerido'
+      if (!form.cliente_nombre.trim()) e.cliente_nombre = 'Requerido'
+      if (!form.cliente_codigo.trim()) e.cliente_codigo = 'Requerido'
+    }
     setErrores(e)
     return Object.keys(e).length === 0
   }
@@ -127,11 +130,12 @@ export default function NuevoProyecto() {
       const ingSel = ingenieros.find(u => String(u.id) === String(form.ingeniero_cargo_id))
 
       const body = {
-        codigo:                 form.codigo.trim(),
+        es_interno:             form.es_interno,
+        codigo:                 form.es_interno ? undefined : form.codigo.trim(),
         nombre:                 form.nombre.trim(),
-        tipo_contratacion:      form.tipo_contratacion,
-        cliente_nombre:         form.cliente_nombre.trim(),
-        cliente_codigo:         form.cliente_codigo.trim().toUpperCase(),
+        tipo_contratacion:      form.es_interno ? 'interno' : form.tipo_contratacion,
+        cliente_nombre:         form.es_interno ? null : form.cliente_nombre.trim(),
+        cliente_codigo:         form.es_interno ? null : form.cliente_codigo.trim().toUpperCase(),
         pm_id:                  form.pm_id || null,
         pm_nombre:              pmSel?.nombre || null,
         ingeniero_cargo_id:     form.ingeniero_cargo_id || null,
@@ -191,103 +195,146 @@ export default function NuevoProyecto() {
           <h3 className="text-sm font-semibold text-[#2c3e50] mb-4">Datos del proyecto</h3>
           <div className="space-y-4">
 
-            {/* Nombre — doble función: busca en shell y es el campo del formulario */}
-            <div ref={wrapperRef} className="relative">
-              <label className="block text-xs font-medium text-gray-600 mb-1">
-                Nombre del proyecto {campoReq()}
-              </label>
+            {/* Toggle proyecto interno */}
+            <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
               <input
-                ref={nombreRef}
-                value={form.nombre}
-                onChange={e => handleNombreChange(e.target.value)}
-                onFocus={() => { if (sugerencias.length > 0) setMostrarLista(true) }}
-                className={inp('nombre')}
-                placeholder="Buscá por nombre o código, o escribí directamente…"
-                autoComplete="off"
+                type="checkbox"
+                id="es_interno"
+                checked={form.es_interno}
+                onChange={e => setForm(f => ({
+                  ...f,
+                  es_interno:        e.target.checked,
+                  codigo:            e.target.checked ? '' : f.codigo,
+                  cliente_nombre:    e.target.checked ? '' : f.cliente_nombre,
+                  cliente_codigo:    e.target.checked ? '' : f.cliente_codigo,
+                  tipo_contratacion: e.target.checked ? 'interno' : 'contratacion_privada',
+                  shell_proyecto_id: e.target.checked ? null : f.shell_proyecto_id,
+                }))}
+                className="w-4 h-4 rounded border-amber-400 accent-amber-600"
               />
-              {errores.nombre && <p className="text-red-500 text-xs mt-1">{errores.nombre}</p>}
+              <label htmlFor="es_interno" className="text-sm font-medium text-amber-800 cursor-pointer">
+                Proyecto interno — sin cliente externo ni código de licitación
+              </label>
+            </div>
 
-              {mostrarLista && (
-                <ul className="absolute z-20 top-full mt-1 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden max-h-60 overflow-y-auto">
-                  {sugerencias.map(p => (
+            {/* Nombre */}
+            {form.es_interno ? (
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Nombre del proyecto {campoReq()}
+                </label>
+                <input
+                  value={form.nombre}
+                  onChange={e => setField('nombre', e.target.value)}
+                  className={inp('nombre')}
+                  placeholder="Nombre descriptivo del proyecto interno"
+                />
+                {errores.nombre && <p className="text-red-500 text-xs mt-1">{errores.nombre}</p>}
+                <p className="text-[10px] text-amber-600 mt-1">
+                  El código se generará automáticamente: P{String(new Date().getFullYear()).slice(-2)}-Intern-XXXXX
+                </p>
+              </div>
+            ) : (
+              <div ref={wrapperRef} className="relative">
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Nombre del proyecto {campoReq()}
+                </label>
+                <input
+                  ref={nombreRef}
+                  value={form.nombre}
+                  onChange={e => handleNombreChange(e.target.value)}
+                  onFocus={() => { if (sugerencias.length > 0) setMostrarLista(true) }}
+                  className={inp('nombre')}
+                  placeholder="Buscá por nombre o código, o escribí directamente…"
+                  autoComplete="off"
+                />
+                {errores.nombre && <p className="text-red-500 text-xs mt-1">{errores.nombre}</p>}
+                {mostrarLista && (
+                  <ul className="absolute z-20 top-full mt-1 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden max-h-60 overflow-y-auto">
+                    {sugerencias.map(p => (
+                      <li
+                        key={p.id ?? p.codigo}
+                        onMouseDown={() => seleccionarDesdeShell(p)}
+                        className="px-4 py-2.5 hover:bg-[#4E738A]/5 cursor-pointer border-b border-gray-50 last:border-0"
+                      >
+                        <span className="font-mono text-xs text-[#4E738A] font-semibold mr-2">{p.codigo}</span>
+                        <span className="text-sm text-gray-700">{p.nombre}</span>
+                        {p.cliente && <div className="text-xs text-gray-400 mt-0.5">{p.cliente}</div>}
+                      </li>
+                    ))}
                     <li
-                      key={p.id ?? p.codigo}
-                      onMouseDown={() => seleccionarDesdeShell(p)}
-                      className="px-4 py-2.5 hover:bg-[#4E738A]/5 cursor-pointer border-b border-gray-50 last:border-0"
+                      onMouseDown={cerrarYContinuar}
+                      className="px-4 py-2.5 cursor-pointer hover:bg-orange-50 flex items-center gap-2 text-xs text-[#EE7623] font-medium border-t border-gray-100"
                     >
-                      <span className="font-mono text-xs text-[#4E738A] font-semibold mr-2">{p.codigo}</span>
-                      <span className="text-sm text-gray-700">{p.nombre}</span>
-                      {p.cliente && <div className="text-xs text-gray-400 mt-0.5">{p.cliente}</div>}
+                      <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                      </svg>
+                      No encontrado — continuar manualmente
                     </li>
-                  ))}
-                  <li
-                    onMouseDown={cerrarYContinuar}
-                    className="px-4 py-2.5 cursor-pointer hover:bg-orange-50 flex items-center gap-2 text-xs text-[#EE7623] font-medium border-t border-gray-100"
+                  </ul>
+                )}
+              </div>
+            )}
+
+            {!form.es_interno && (
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Código del proyecto {campoReq()}
+                  </label>
+                  <input
+                    value={form.codigo}
+                    onChange={e => setField('codigo', e.target.value)}
+                    className={inp('codigo')}
+                    placeholder="P26-000387-CL-ACOS"
+                  />
+                  {errores.codigo && <p className="text-red-500 text-xs mt-1">{errores.codigo}</p>}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Tipo de contratación {campoReq()}
+                  </label>
+                  <select
+                    value={form.tipo_contratacion}
+                    onChange={e => setField('tipo_contratacion', e.target.value)}
+                    className={inp('tipo_contratacion')}
                   >
-                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                    </svg>
-                    No encontrado — continuar manualmente
-                  </li>
-                </ul>
-              )}
-            </div>
+                    <option value="contratacion_privada">Contratación Privada</option>
+                    <option value="licitacion_publica">Licitación Pública</option>
+                    <option value="otra">Otra</option>
+                  </select>
+                </div>
 
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">
-                Código del proyecto {campoReq()}
-              </label>
-              <input
-                value={form.codigo}
-                onChange={e => setField('codigo', e.target.value)}
-                className={inp('codigo')}
-                placeholder="P26-000387-CL-ACOS"
-              />
-              {errores.codigo && <p className="text-red-500 text-xs mt-1">{errores.codigo}</p>}
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">
-                Tipo de contratación {campoReq()}
-              </label>
-              <select
-                value={form.tipo_contratacion}
-                onChange={e => setField('tipo_contratacion', e.target.value)}
-                className={inp('tipo_contratacion')}
-              >
-                <option value="contratacion_privada">Contratación Privada</option>
-                <option value="licitacion_publica">Licitación Pública</option>
-                <option value="otra">Otra</option>
-              </select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Cliente nombre {campoReq()}
-                </label>
-                <input
-                  value={form.cliente_nombre}
-                  onChange={e => setField('cliente_nombre', e.target.value)}
-                  className={inp('cliente_nombre')}
-                  placeholder="Nombre del cliente"
-                />
-                {errores.cliente_nombre && <p className="text-red-500 text-xs mt-1">{errores.cliente_nombre}</p>}
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Código cliente {campoReq()}
-                </label>
-                <input
-                  value={form.cliente_codigo}
-                  onChange={e => setField('cliente_codigo', e.target.value.toUpperCase())}
-                  className={inp('cliente_codigo')}
-                  placeholder="ACOS"
-                  maxLength={4}
-                />
-                {errores.cliente_codigo && <p className="text-red-500 text-xs mt-1">{errores.cliente_codigo}</p>}
-              </div>
-            </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Cliente nombre {campoReq()}
+                    </label>
+                    <input
+                      value={form.cliente_nombre}
+                      onChange={e => setField('cliente_nombre', e.target.value)}
+                      className={inp('cliente_nombre')}
+                      placeholder="Nombre del cliente"
+                    />
+                    {errores.cliente_nombre && <p className="text-red-500 text-xs mt-1">{errores.cliente_nombre}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Código cliente {campoReq()}
+                    </label>
+                    <input
+                      value={form.cliente_codigo}
+                      onChange={e => setField('cliente_codigo', e.target.value.toUpperCase())}
+                      className={inp('cliente_codigo')}
+                      placeholder="ACOS"
+                      maxLength={4}
+                    />
+                    {errores.cliente_codigo && <p className="text-red-500 text-xs mt-1">{errores.cliente_codigo}</p>}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
 

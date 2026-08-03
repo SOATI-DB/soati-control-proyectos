@@ -40,6 +40,7 @@ export default function ListaProyectos() {
   const [filtroPM, setFiltroPM] = useState('')
   const [filtroCliente, setFiltroCliente] = useState('')
   const [filtroIngeniero, setFiltroIngeniero] = useState('')
+  const [filtroInterno, setFiltroInterno] = useState(false)
   const [listaPMs, setListaPMs] = useState([])
   const [listaIngenieros, setListaIngenieros] = useState([])
 
@@ -77,10 +78,11 @@ export default function ListaProyectos() {
     setFiltroPM('')
     setFiltroCliente('')
     setFiltroIngeniero('')
+    setFiltroInterno(false)
   }
 
-  const hayFiltros = filtroEstado || busqueda || filtroPM || filtroCliente || filtroIngeniero
-  const filtrados = proyectos
+  const hayFiltros = filtroEstado || busqueda || filtroPM || filtroCliente || filtroIngeniero || filtroInterno
+  const filtrados = proyectos.filter(p => !filtroInterno || p.es_interno === 1)
 
   if (cargando) return (
     <div className="flex items-center justify-center py-16 text-[#5f6b75] text-sm">Cargando...</div>
@@ -159,6 +161,15 @@ export default function ListaProyectos() {
           <option value="">Ingeniero a cargo — todos</option>
           {listaIngenieros.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
         </select>
+        <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer border border-gray-300 rounded-lg px-3 py-2 hover:bg-gray-50 whitespace-nowrap">
+          <input
+            type="checkbox"
+            checked={filtroInterno}
+            onChange={e => setFiltroInterno(e.target.checked)}
+            className="rounded border-gray-300 accent-amber-600"
+          />
+          Solo internos
+        </label>
         {hayFiltros && (
           <button
             onClick={limpiarFiltros}
@@ -198,7 +209,14 @@ export default function ListaProyectos() {
                     className="hover:bg-gray-50 cursor-pointer transition-colors"
                   >
                     <td className="px-4 py-3 font-mono text-xs text-gray-600">{p.codigo}</td>
-                    <td className="px-4 py-3 font-medium text-[#2c3e50]">{p.nombre}</td>
+                    <td className="px-4 py-3 font-medium text-[#2c3e50]">
+                      <span>{p.nombre}</span>
+                      {p.es_interno === 1 && (
+                        <span className="ml-2 inline-flex items-center bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">
+                          Interno
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-gray-600">{p.cliente_nombre || '—'}</td>
                     <td className="px-4 py-3 text-gray-600">{p.pm_nombre || '—'}</td>
                     <td className="px-4 py-3">

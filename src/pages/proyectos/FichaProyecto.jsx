@@ -340,6 +340,11 @@ export default function FichaProyecto() {
         <button onClick={() => navigate('/proyectos')} className="text-[#4E738A] hover:underline text-sm">Proyectos</button>
         <span className="text-gray-400">/</span>
         <span className="text-sm text-gray-600 font-mono">{proyecto.codigo}</span>
+        {proyecto.es_interno === 1 && (
+          <span className="bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">
+            Interno
+          </span>
+        )}
       </div>
 
       <div className="mb-4">
