@@ -1,20 +1,20 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 
 const MODULO_CONFIG = {
-  'field-reports':        { label: 'Field Reports',           icono: '📋' },
-  'wang':                 { label: 'Wang',                    icono: '📄' },
-  'control-gastos':       { label: 'Control de Gastos',       icono: '💰' },
-  'activos':              { label: 'Activos Fijos',           icono: '🏭' },
-  'compras':              { label: 'Compras',                 icono: '🛒' },
-  'rh':                   { label: 'Recursos Humanos',        icono: '👥' },
-  'tickets':              { label: 'Tickets',                 icono: '🎫' },
-  'design-ops':           { label: 'Design Ops',              icono: '🎨' },
-  'gestion-trabajo':      { label: 'Gestión de Trabajo',      icono: '✅' },
-  'control-proyectos':    { label: 'Control de Proyectos',    icono: '📊' },
-  'comercial':            { label: 'Comercial',               icono: '💼' },
-  'inventario':           { label: 'Inventario de Bodega',    icono: '📦' },
-  'inventario-software':  { label: 'Inventario Software',     icono: '💻' },
-  'despacho':             { label: 'Despacho',                icono: '🚚' },
+  'field-reports':        { label: 'Field Reports',           icono: 'ðŸ“‹' },
+  'wang':                 { label: 'Wang',                    icono: 'ðŸ“„' },
+  'control-gastos':       { label: 'Control de Gastos',       icono: 'ðŸ’°' },
+  'activos':              { label: 'Activos Fijos',           icono: 'ðŸ­' },
+  'compras':              { label: 'Compras',                 icono: 'ðŸ›’' },
+  'rh':                   { label: 'Recursos Humanos',        icono: 'ðŸ‘¥' },
+  'tickets':              { label: 'Tickets',                 icono: 'ðŸŽ«' },
+  'design-ops':           { label: 'Design Ops',              icono: 'ðŸŽ¨' },
+  'gestion-trabajo':      { label: 'GestiÃ³n de Trabajo',      icono: 'âœ…' },
+  'control-proyectos':    { label: 'Control de Proyectos',    icono: 'ðŸ“Š' },
+  'comercial':            { label: 'Comercial',               icono: 'ðŸ’¼' },
+  'inventario':           { label: 'Inventario de Bodega',    icono: 'ðŸ“¦' },
+  'inventario-software':  { label: 'Inventario Software',     icono: 'ðŸ’»' },
+  'despacho':             { label: 'Despacho',                icono: 'ðŸšš' },
 }
 
 const isDev = import.meta.env.DEV
@@ -29,6 +29,7 @@ const MODULOS_DISPONIBLES = new Set([
   'rh',
   'control-proyectos',
   'comercial',
+  'tickets',
 ])
 
 const RUTAS = isDev ? {
@@ -79,7 +80,7 @@ export function NavModulos({ modulos = [], shellUrl = '', usuarioNombre = '' }) 
         onClick={() => setAbierto(true)}
         className="fixed left-0 top-1/2 -translate-y-1/2 z-30 bg-[#4E738A] hover:bg-[#3d5c70] text-white transition-colors rounded-r-lg shadow-md"
         style={{ writingMode: 'vertical-rl' }}
-        title="Ver módulos"
+        title="Ver mÃ³dulos"
       >
         <div className="flex flex-col items-center gap-1 px-1.5 py-3">
           <svg viewBox="0 0 24 24" className="w-4 h-4 rotate-90" fill="none" stroke="currentColor" strokeWidth="2">
@@ -117,7 +118,7 @@ export function NavModulos({ modulos = [], shellUrl = '', usuarioNombre = '' }) 
 
         <div className="flex-1 overflow-y-auto py-3">
           <p className="px-5 pb-2 text-xs font-semibold text-gray-400 uppercase tracking-wide">
-            Mis módulos
+            Mis mÃ³dulos
           </p>
           {modulosDisponibles.map(m => {
             const disponible = MODULOS_DISPONIBLES.has(m)
@@ -139,7 +140,7 @@ export function NavModulos({ modulos = [], shellUrl = '', usuarioNombre = '' }) 
                   <span>{config.label}</span>
                 </div>
                 <span className="text-xs bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded-full">
-                  Próximo
+                  PrÃ³ximo
                 </span>
               </div>
             )
