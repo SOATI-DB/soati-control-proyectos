@@ -202,21 +202,33 @@ export default function GanttProyecto({ proyecto, onEditarTarea }) {
   const dependencyLines = []
   if (barAreaWidth > 0) {
     for (const t of tareas) {
-      if (!t.tarea_predecesora_id) continue
-      const predIdx = tareaRowIndex[t.tarea_predecesora_id]
+      let predIds = []
+      try {
+        const parsed = JSON.parse(t.predecesoras_ids || '[]')
+        predIds = Array.isArray(parsed) ? parsed.map(String) : []
+      } catch { predIds = [] }
+      if (t.tarea_predecesora_id && !predIds.includes(String(t.tarea_predecesora_id))) {
+        predIds.push(String(t.tarea_predecesora_id))
+      }
+      if (!predIds.length) continue
       const currIdx = tareaRowIndex[t.id]
-      if (predIdx === undefined || currIdx === undefined) continue
-      const predItem = orderedRows[predIdx]?.item
-      if (!predItem) continue
-      const barA = getBarTarea(predItem)
+      if (currIdx === undefined) continue
       const barB = getBarTarea(t)
-      if (!barA || !barB) continue
-      dependencyLines.push({
-        x1: barAreaWidth * (parseFloat(barA.left) + parseFloat(barA.width)) / 100,
-        y1: predIdx * 32 + 16,
-        x2: barAreaWidth * parseFloat(barB.left) / 100,
-        y2: currIdx * 32 + 16,
-      })
+      if (!barB) continue
+      for (const predId of predIds) {
+        const predIdx = tareaRowIndex[predId]
+        if (predIdx === undefined) continue
+        const predItem = orderedRows[predIdx]?.item
+        if (!predItem) continue
+        const barA = getBarTarea(predItem)
+        if (!barA) continue
+        dependencyLines.push({
+          x1: barAreaWidth * (parseFloat(barA.left) + parseFloat(barA.width)) / 100,
+          y1: predIdx * 32 + 16,
+          x2: barAreaWidth * parseFloat(barB.left) / 100,
+          y2: currIdx * 32 + 16,
+        })
+      }
     }
   }
 
