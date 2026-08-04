@@ -211,7 +211,7 @@ export default function GanttProyecto({ proyecto, onEditarTarea }) {
         predIds.push(String(t.tarea_predecesora_id))
       }
       if (!predIds.length) continue
-      const currIdx = tareaRowIndex[t.id]
+      const currIdx = tareaRowIndex[String(t.id)]
       if (currIdx === undefined) continue
       const barB = getBarTarea(t)
       if (!barB) continue
