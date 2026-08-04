@@ -214,20 +214,23 @@ export default function GanttProyecto({ proyecto, onEditarTarea }) {
       const currIdx = tareaRowIndex[String(t.id)]
       if (currIdx === undefined) continue
       const barB = getBarTarea(t)
-      if (!barB) continue
       for (const predId of predIds) {
         const predIdx = tareaRowIndex[predId]
         if (predIdx === undefined) continue
         const predItem = orderedRows[predIdx]?.item
         if (!predItem) continue
         const barA = getBarTarea(predItem)
-        if (!barA) continue
-        dependencyLines.push({
-          x1: barAreaWidth * (parseFloat(barA.left) + parseFloat(barA.width)) / 100,
-          y1: predIdx * 32 + 16,
-          x2: barAreaWidth * parseFloat(barB.left) / 100,
-          y2: currIdx * 32 + 16,
-        })
+        if (!barA && !barB) continue  // ninguna visible — no dibujar
+        const fueraDeRango = !barA || !barB
+        const x1 = barA
+          ? barAreaWidth * (parseFloat(barA.left) + parseFloat(barA.width)) / 100
+          : 0  // predecesora antes del rango — desde borde izquierdo
+        const x2 = barB
+          ? barAreaWidth * parseFloat(barB.left) / 100
+          : barAreaWidth  // destino después del rango — hasta borde derecho
+        const y1 = barA ? predIdx * 32 + 16 : currIdx * 32 + 16
+        const y2 = currIdx * 32 + 16
+        dependencyLines.push({ x1, y1, x2, y2, fueraDeRango })
       }
     }
   }
@@ -514,17 +517,20 @@ export default function GanttProyecto({ proyecto, onEditarTarea }) {
                 <marker id="dep-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
                   <path d="M 0 0 L 6 3 L 0 6 Z" fill="#4E738A" opacity="0.7" />
                 </marker>
+                <marker id="dep-arrow-out" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                  <path d="M 0 0 L 6 3 L 0 6 Z" fill="#e67e22" opacity="0.8" />
+                </marker>
               </defs>
               {dependencyLines.map((line, i) => (
                 <path
                   key={i}
                   d={`M ${line.x1} ${line.y1} C ${Math.min(line.x1 + 20, barAreaWidth)} ${line.y1} ${Math.max(line.x2 - 20, 0)} ${line.y2} ${line.x2} ${line.y2}`}
-                  stroke="#4E738A"
+                  stroke={line.fueraDeRango ? '#e67e22' : '#4E738A'}
                   strokeWidth="1.5"
-                  strokeOpacity="0.6"
-                  strokeDasharray="4,2"
+                  strokeOpacity={line.fueraDeRango ? '0.8' : '0.6'}
+                  strokeDasharray={line.fueraDeRango ? '4,3' : '3,2'}
                   fill="none"
-                  markerEnd="url(#dep-arrow)"
+                  markerEnd={line.fueraDeRango ? 'url(#dep-arrow-out)' : 'url(#dep-arrow)'}
                 />
               ))}
             </svg>
