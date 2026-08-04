@@ -195,11 +195,15 @@ export default function GanttProyecto({ proyecto, onEditarTarea }) {
       }
     }
   }
-  const tareaRowIndex = {}
+  const tareaRowIndex = {}  // id → posición visual (para Y)
+  const tareaRowItem = {}   // id → item (para obtener bar)
   let visualRow = 0
   orderedRows.forEach((r) => {
-    if (r.type === 'recurso') return  // no contar recursos
-    if (r.type === 'tarea') tareaRowIndex[String(r.item.id)] = visualRow
+    if (r.type === 'recurso') return
+    if (r.type === 'tarea') {
+      tareaRowIndex[String(r.item.id)] = visualRow
+      tareaRowItem[String(r.item.id)] = r.item
+    }
     visualRow++
   })
 
@@ -222,7 +226,7 @@ export default function GanttProyecto({ proyecto, onEditarTarea }) {
       for (const predId of predIds) {
         const predIdx = tareaRowIndex[predId]
         if (predIdx === undefined) continue
-        const predItem = orderedRows[predIdx]?.item
+        const predItem = tareaRowItem[predId]
         if (!predItem) continue
         const barA = getBarTarea(predItem)
         if (!barA && !barB) continue  // ninguna visible — no dibujar
