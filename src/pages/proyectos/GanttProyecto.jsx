@@ -196,7 +196,12 @@ export default function GanttProyecto({ proyecto, onEditarTarea }) {
     }
   }
   const tareaRowIndex = {}
-  orderedRows.forEach((r, i) => { if (r.type === 'tarea') tareaRowIndex[String(r.item.id)] = i })
+  let visualRow = 0
+  orderedRows.forEach((r) => {
+    if (r.type === 'recurso') return  // no contar recursos
+    if (r.type === 'tarea') tareaRowIndex[String(r.item.id)] = visualRow
+    visualRow++
+  })
 
   // Líneas de dependencia
   const dependencyLines = []
