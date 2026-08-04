@@ -349,6 +349,18 @@ export default function GanttProyecto({ proyecto, onEditarTarea }) {
                 onMouseLeave={() => setTooltip(null)}
               />
             )}
+            {barPrincipal && t.responsable && (
+              <div
+                className="absolute text-[10px] text-gray-500 whitespace-nowrap pointer-events-none"
+                style={{
+                  left: `calc(${barPrincipal.left} + ${barPrincipal.width} + 4px)`,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                }}
+              >
+                {t.responsable}
+              </div>
+            )}
           </div>
         </div>
         {incluirRecurso && recursos.map(r => (
