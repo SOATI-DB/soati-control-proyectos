@@ -117,6 +117,8 @@ export default function GanttProyecto({ proyecto, onEditarTarea }) {
     return tareas.filter(t => t.fase_id === faseId)
   }
   const tareasSinFase = tareas.filter(t => !t.fase_id)
+  const fasesRaiz = fases.filter(f => !f.fase_padre_id)
+  const getSubfases = (faseId) => fases.filter(f => f.fase_padre_id === faseId)
 
   function getRangoDeFase(faseId) {
     const ts = getTareasDeFase(faseId)
@@ -153,45 +155,45 @@ export default function GanttProyecto({ proyecto, onEditarTarea }) {
     return calcBar(t.fecha_inicio, t.fecha_limite, diaInicioStr, diasEnMes)
   }
 
-  // Orden de filas: [subproyecto →] fase → tarea → recursos de esa tarea
+  function agregarFilasFase(rows, f) {
+    rows.push({ type: 'fase', item: f })
+    for (const sf of getSubfases(f.id)) {
+      rows.push({ type: 'subfase', item: sf, padre: f })
+      for (const t of getTareasDeFase(sf.id)) {
+        rows.push({ type: 'tarea', item: t })
+        for (const r of (t.recursos || [])) {
+          if (incluirRecurso) rows.push({ type: 'recurso', item: r, tarea: t })
+        }
+      }
+    }
+    for (const t of getTareasDeFase(f.id)) {
+      rows.push({ type: 'tarea', item: t })
+      for (const r of (t.recursos || [])) {
+        if (incluirRecurso) rows.push({ type: 'recurso', item: r, tarea: t })
+      }
+    }
+  }
+
+  // Orden de filas: [subproyecto →] fase → subfase → tareas de subfase → tareas directas
   const orderedRows = []
   if (tieneSubproyectos) {
     for (const sp of subproyectos) {
       orderedRows.push({ type: 'subproyecto', item: sp })
-      const fasesDelSP = fases.filter(f => f.subproyecto_id === sp.id)
-      for (const f of fasesDelSP) {
-        orderedRows.push({ type: 'fase', item: f })
-        for (const t of getTareasDeFase(f.id)) {
-          orderedRows.push({ type: 'tarea', item: t })
-          for (const r of (t.recursos || [])) {
-            if (incluirRecurso) orderedRows.push({ type: 'recurso', item: r, tarea: t })
-          }
-        }
+      for (const f of fasesRaiz.filter(f => f.subproyecto_id === sp.id)) {
+        agregarFilasFase(orderedRows, f)
       }
     }
-    for (const f of fases.filter(f => !f.subproyecto_id)) {
-      orderedRows.push({ type: 'fase', item: f })
-      for (const t of getTareasDeFase(f.id)) {
-        orderedRows.push({ type: 'tarea', item: t })
-        for (const r of (t.recursos || [])) {
-          orderedRows.push({ type: 'recurso', item: r, tarea: t })
-        }
-      }
+    for (const f of fasesRaiz.filter(f => !f.subproyecto_id)) {
+      agregarFilasFase(orderedRows, f)
     }
   } else {
-    for (const f of fases) {
-      orderedRows.push({ type: 'fase', item: f })
-      for (const t of getTareasDeFase(f.id)) {
-        orderedRows.push({ type: 'tarea', item: t })
-        for (const r of (t.recursos || [])) {
-          orderedRows.push({ type: 'recurso', item: r, tarea: t })
-        }
-      }
+    for (const f of fasesRaiz) {
+      agregarFilasFase(orderedRows, f)
     }
     for (const t of tareasSinFase) {
       orderedRows.push({ type: 'tarea', item: t })
       for (const r of (t.recursos || [])) {
-        orderedRows.push({ type: 'recurso', item: r, tarea: t })
+        if (incluirRecurso) orderedRows.push({ type: 'recurso', item: r, tarea: t })
       }
     }
   }
@@ -349,11 +351,11 @@ export default function GanttProyecto({ proyecto, onEditarTarea }) {
                 onMouseLeave={() => setTooltip(null)}
               />
             )}
-            {barPrincipal && t.responsable && (
+            {(barPrincipal || barSLA) && t.responsable && (
               <div
                 className="absolute text-[10px] text-gray-500 whitespace-nowrap pointer-events-none"
                 style={{
-                  left: `calc(${barPrincipal.left} + ${barPrincipal.width} + 4px)`,
+                  left: `calc(${(barPrincipal || barSLA).left} + ${(barPrincipal || barSLA).width} + 4px)`,
                   top: '50%',
                   transform: 'translateY(-50%)',
                 }}
@@ -375,6 +377,32 @@ export default function GanttProyecto({ proyecto, onEditarTarea }) {
           />
         ))}
       </Fragment>
+    )
+  }
+
+  function FilaSubfase({ f }) {
+    const { inicio, fin } = getRangoDeFase(f.id)
+    const fechaFin = fin || f.fecha_fin_plan
+    const bar = calcBar(inicio || f.fecha_inicio_plan, fechaFin, diaInicioStr, diasEnMes)
+    return (
+      <div className="flex border-b border-gray-100 min-h-[32px] bg-[#4E738A]/10">
+        <div
+          className="w-48 shrink-0 px-2 py-1 text-xs text-[#4E738A] truncate border-r border-gray-200 flex items-center gap-1"
+          style={{ paddingLeft: '20px' }}
+        >
+          <span className="text-[#9aa1a9]">└─</span>
+          <span className="truncate font-medium">{f.nombre}</span>
+        </div>
+        <div className="flex-1 relative">
+          <DiasCols />
+          {bar && (
+            <div
+              className="absolute top-1 bottom-1 rounded opacity-60"
+              style={{ left: bar.left, width: bar.width, backgroundColor: '#4E738A' }}
+            />
+          )}
+        </div>
+      </div>
     )
   }
 
@@ -504,15 +532,14 @@ export default function GanttProyecto({ proyecto, onEditarTarea }) {
                 </div>
               )
             }
+            if (row.type === 'subfase') {
+              return <FilaSubfase key={`sf-${row.item.id}`} f={row.item} />
+            }
             if (row.type === 'tarea') {
               return <FilaTarea key={`t-${row.item.id}`} t={row.item} labelPrefix="  └ " />
             }
             return null
           })}
-
-          {!tieneSubproyectos && tareasSinFase.map(t => (
-            <FilaTarea key={t.id} t={t} labelPrefix="" />
-          ))}
 
           {fases.length === 0 && tareas.length === 0 && (
             <div className="flex border-b border-gray-100 min-h-[48px] items-center justify-center">

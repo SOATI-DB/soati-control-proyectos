@@ -160,7 +160,7 @@ export default function FichaProyecto() {
     setGuardandoFicha(false)
   }
 
-  function abrirModal(tipo, item = null) {
+  function abrirModal(tipo, item = null, extra = {}) {
     setModal({ tipo, item })
     if (tipo === 'tarea' && item) {
       const ids = (() => {
@@ -176,7 +176,7 @@ export default function FichaProyecto() {
       })()
       setModalForm({ ...item, predecesoras_ids: ids })
     } else {
-      setModalForm(item ? { ...item } : {})
+      setModalForm(item ? { ...item } : { ...extra })
     }
     setDisponibilidad(null)
     setRecursosEnTarea([])
@@ -503,6 +503,12 @@ export default function FichaProyecto() {
             {puedeGestionar && (
               <div className="flex gap-2">
                 <button onClick={() => abrirModal('fase', f)} className="text-xs text-gray-400 hover:text-[#4E738A]">Editar</button>
+                <button
+                  onClick={() => abrirModal('fase', null, { fase_padre_id: f.id, fase_padre_nombre: f.nombre, subproyecto_id: f.subproyecto_id || null })}
+                  className="text-xs text-[#4E738A] border border-[#4E738A]/40 rounded px-2 py-0.5 hover:bg-[#4E738A]/5"
+                >
+                  + Sub-fase
+                </button>
                 <button onClick={() => eliminar('fase', f.id)} className="text-xs text-gray-400 hover:text-red-500">Eliminar</button>
               </div>
             )}
@@ -823,11 +829,22 @@ export default function FichaProyecto() {
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center px-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
             <h3 className="font-semibold text-[#2c3e50] mb-4">
-              {modal.item ? 'Editar' : 'Agregar'} {modal.tipo}
+              {modal.tipo === 'fase'
+                ? (modal.item
+                    ? 'Editar fase'
+                    : modalForm.fase_padre_id
+                      ? `Nueva sub-fase de: ${modalForm.fase_padre_nombre}`
+                      : 'Nueva fase')
+                : `${modal.item ? 'Editar' : 'Agregar'} ${modal.tipo}`}
             </h3>
 
             {modal.tipo === 'fase' && (
               <div className="space-y-3">
+                {modalForm.fase_padre_id && (
+                  <div className="bg-[#4E738A]/8 border border-[#4E738A]/20 rounded-lg px-3 py-2 text-xs text-[#4E738A]">
+                    Sub-fase de: <strong>{modalForm.fase_padre_nombre}</strong>
+                  </div>
+                )}
                 <div><label className="block text-xs text-gray-500 mb-1">Nombre</label>
                   <input value={modalForm.nombre || ''} onChange={e => mf('nombre', e.target.value)} className={inp()} /></div>
                 <div className="grid grid-cols-2 gap-3">
@@ -840,7 +857,7 @@ export default function FichaProyecto() {
                   <select value={modalForm.estado || 'pendiente'} onChange={e => mf('estado', e.target.value)} className={inp()}>
                     {['pendiente','en_curso','completada','bloqueada'].map(e => <option key={e} value={e}>{e}</option>)}
                   </select></div>
-                {(proyecto.subproyectos || []).length > 0 && (
+                {(proyecto.subproyectos || []).length > 0 && !modalForm.fase_padre_id && (
                   <div><label className="block text-xs text-gray-500 mb-1">Subproyecto</label>
                     <select value={modalForm.subproyecto_id || ''} onChange={e => mf('subproyecto_id', e.target.value ? parseInt(e.target.value) : null)} className={inp()}>
                       <option value="">— Sin subproyecto —</option>
