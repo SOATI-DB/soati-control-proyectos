@@ -9,7 +9,7 @@ import {
   crearContacto, actualizarContacto, eliminarContacto,
   crearHito, actualizarHito, eliminarHito,
   subirAdjuntoProyecto, descargarAdjuntoProyecto, eliminarAdjuntoProyecto,
-  getIngenieros,
+  getRecursosIngenieria,
   getRecursosDisponibles, verificarDisponibilidad, asignarRecurso, eliminarRecurso, getRecursosTarea,
   crearSubproyecto, actualizarSubproyecto, eliminarSubproyecto,
 } from '../../services/api'
@@ -100,7 +100,7 @@ export default function FichaProyecto() {
 
   useEffect(() => {
     cargar()
-    getIngenieros().then(setIngenieros)
+    getRecursosIngenieria().then(setIngenieros)
     getRecursosDisponibles().then(data => setRecursosDisponibles(Array.isArray(data) ? data : []))
   }, [id])
 

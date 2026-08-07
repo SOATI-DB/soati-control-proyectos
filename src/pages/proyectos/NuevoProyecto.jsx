@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getUsuarios, getIngenieros } from '../../services/api'
+import { getPMs, getRecursosIngenieria } from '../../services/api'
 
 const BASE      = import.meta.env.VITE_API_URL      || 'http://localhost:3011'
 const SHELL_API = import.meta.env.VITE_SHELL_API_URL || 'http://localhost:3001'
@@ -58,8 +58,8 @@ export default function NuevoProyecto() {
   })
 
   useEffect(() => {
-    getUsuarios().then(setUsuarios)
-    getIngenieros().then(setIngenieros)
+    getPMs().then(setUsuarios)
+    getRecursosIngenieria().then(setIngenieros)
     cargarProyectosShell().then(setTodosProyectos).catch(() => {})
   }, [])
 
