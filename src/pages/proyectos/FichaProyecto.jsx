@@ -9,7 +9,7 @@ import {
   crearContacto, actualizarContacto, eliminarContacto,
   crearHito, actualizarHito, eliminarHito,
   subirAdjuntoProyecto, descargarAdjuntoProyecto, eliminarAdjuntoProyecto,
-  getRecursosIngenieria,
+  getRecursosIngenieria, getPMs,
   getRecursosDisponibles, verificarDisponibilidad, asignarRecurso, eliminarRecurso, getRecursosTarea,
   crearSubproyecto, actualizarSubproyecto, eliminarSubproyecto,
 } from '../../services/api'
@@ -41,6 +41,7 @@ export default function FichaProyecto() {
   const [cargando, setCargando] = useState(true)
   const [tab, setTab] = useState('General')
   const [ingenieros, setIngenieros] = useState([])
+  const [pms, setPms] = useState([])
 
   // General edit
   const [editandoFicha, setEditandoFicha] = useState(false)
@@ -101,6 +102,7 @@ export default function FichaProyecto() {
   useEffect(() => {
     cargar()
     getRecursosIngenieria().then(setIngenieros)
+    getPMs().then(setPms)
     getRecursosDisponibles().then(data => setRecursosDisponibles(Array.isArray(data) ? data : []))
   }, [id])
 
@@ -128,7 +130,9 @@ export default function FichaProyecto() {
   function iniciarEditFicha() {
     setFichaForm({
       nombre:                proyecto.nombre || '',
+      pm_id:                 proyecto.pm_id != null ? String(proyecto.pm_id) : '',
       pm_nombre:             proyecto.pm_nombre || '',
+      lugar_geografico:      proyecto.lugar_geografico || '',
       ingeniero_cargo_id:    proyecto.ingeniero_cargo_id != null ? String(proyecto.ingeniero_cargo_id) : '',
       ingeniero_cargo_nombre: proyecto.ingeniero_cargo_nombre || '',
       requiere_diseno:       proyecto.requiere_diseno || 0,
@@ -154,6 +158,8 @@ export default function FichaProyecto() {
     }
     const ing = ingenieros.find(u => String(u.id) === String(fichaForm.ingeniero_cargo_id))
     if (ing) data.ingeniero_cargo_nombre = ing.nombre
+    const pm = pms.find(u => String(u.id) === String(fichaForm.pm_id))
+    if (pm) data.pm_nombre = pm.nombre
     await actualizarFicha(id, data)
     await cargar()
     setEditandoFicha(false)
@@ -393,6 +399,20 @@ export default function FichaProyecto() {
                   </select>
                 </div>
                 <div>
+                  <label className="block text-xs text-gray-500 mb-1">PM asignado</label>
+                  <select
+                    value={fichaForm.pm_id || ''}
+                    onChange={e => {
+                      const sel = pms.find(u => String(u.id) === e.target.value)
+                      setFichaForm(f => ({ ...f, pm_id: e.target.value, pm_nombre: sel?.nombre || '' }))
+                    }}
+                    className={inp()}
+                  >
+                    <option value="">Sin asignar</option>
+                    {pms.map(u => <option key={u.id} value={String(u.id)}>{u.nombre}</option>)}
+                  </select>
+                </div>
+                <div>
                   <label className="block text-xs text-gray-500 mb-1">Ingeniero a cargo</label>
                   <select
                     value={fichaForm.ingeniero_cargo_id}
@@ -439,6 +459,16 @@ export default function FichaProyecto() {
                 </label>
               </div>
               <div>
+                <label className="block text-xs text-gray-500 mb-1">Ubicación geográfica</label>
+                <input
+                  type="text"
+                  value={fichaForm.lugar_geografico || ''}
+                  onChange={e => setFichaForm(f => ({ ...f, lugar_geografico: e.target.value }))}
+                  placeholder="Ej: San José, Costa Rica"
+                  className={inp()}
+                />
+              </div>
+              <div>
                 <label className="block text-xs text-gray-500 mb-1">Descripción / alcance</label>
                 <textarea value={fichaForm.descripcion} onChange={e => setFichaForm(f => ({ ...f, descripcion: e.target.value }))} rows={4} className={inp()} />
               </div>
@@ -481,6 +511,16 @@ export default function FichaProyecto() {
                 <div className="col-span-2">
                   <p className="text-xs text-gray-400 uppercase tracking-wide">Descripción</p>
                   <p className="text-[#2c3e50] mt-0.5 whitespace-pre-wrap">{proyecto.descripcion}</p>
+                </div>
+              )}
+              {(proyecto.requiere_ensamble || proyecto.requiere_subcontratar) && (
+                <div className="col-span-2 flex gap-2 flex-wrap">
+                  {proyecto.requiere_ensamble && (
+                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Requiere ensamble</span>
+                  )}
+                  {proyecto.requiere_subcontratar && (
+                    <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">Requiere subcontratar</span>
+                  )}
                 </div>
               )}
             </div>
