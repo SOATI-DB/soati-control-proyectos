@@ -48,35 +48,76 @@ export default function ListaProyectos() {
   const [listaPMs, setListaPMs] = useState([])
   const [listaIngenieros, setListaIngenieros] = useState([])
 
+  // Fuente de verdad para los parámetros del fetch — no causa re-renders
+  const filtrosRef = useRef({ estado: '', q: '', pm: '', cliente: '', ingeniero: '' })
+
   const puedeGestionar = user?.rol === 'admin' || tienePermiso('control-proyectos', 'gestionar_proyecto')
 
   useEffect(() => {
     getPMs().then(setListaPMs)
     getRecursosIngenieria().then(setListaIngenieros)
-  }, [])
+    buscar()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function buscar() {
+    setCargando(true)
+    try {
+      const f = filtrosRef.current
+      const params = {}
+      if (f.estado)    params.estado             = f.estado
+      if (f.q)         params.q                  = f.q
+      if (f.pm)        params.pm_id              = f.pm
+      if (f.cliente)   params.cliente            = f.cliente
+      if (f.ingeniero) params.ingeniero_cargo_id = f.ingeniero
+      const data = await getProyectos(params)
+      setProyectos(Array.isArray(data) ? data : [])
+    } catch {
+      // silencioso
+    } finally {
+      setCargando(false)
+    }
+  }
 
   function handleBusquedaChange(e) {
     clearTimeout(busquedaTimerRef.current)
-    busquedaTimerRef.current = setTimeout(() => setBusqueda(e.target.value), 400)
+    const val = e.target.value
+    busquedaTimerRef.current = setTimeout(() => {
+      filtrosRef.current.q = val
+      setBusqueda(val)
+      buscar()
+    }, 400)
   }
 
   function handleClienteChange(e) {
     clearTimeout(clienteTimerRef.current)
-    clienteTimerRef.current = setTimeout(() => setFiltroCliente(e.target.value), 400)
+    const val = e.target.value
+    clienteTimerRef.current = setTimeout(() => {
+      filtrosRef.current.cliente = val
+      setFiltroCliente(val)
+      buscar()
+    }, 400)
   }
 
-  useEffect(() => {
-    setCargando(true)
-    const params = {}
-    if (filtroEstado)    params.estado             = filtroEstado
-    if (busqueda)        params.q                  = busqueda
-    if (filtroPM)        params.pm_id              = filtroPM
-    if (filtroCliente)   params.cliente            = filtroCliente
-    if (filtroIngeniero) params.ingeniero_cargo_id = filtroIngeniero
-    getProyectos(params)
-      .then(data => { setProyectos(Array.isArray(data) ? data : []); setCargando(false) })
-      .catch(() => setCargando(false))
-  }, [filtroEstado, busqueda, filtroPM, filtroCliente, filtroIngeniero])
+  function handleEstadoChange(e) {
+    const val = e.target.value
+    filtrosRef.current.estado = val
+    setFiltroEstado(val)
+    buscar()
+  }
+
+  function handlePMChange(e) {
+    const val = e.target.value
+    filtrosRef.current.pm = val
+    setFiltroPM(val)
+    buscar()
+  }
+
+  function handleIngenieroChange(e) {
+    const val = e.target.value
+    filtrosRef.current.ingeniero = val
+    setFiltroIngeniero(val)
+    buscar()
+  }
 
   const activos = proyectos.filter(p => !['cerrado', 'cancelado'].includes(p.estado))
   const enEjecucion = proyectos.filter(p => p.estado === 'en_ejecucion')
@@ -87,6 +128,7 @@ export default function ListaProyectos() {
   })
 
   function limpiarFiltros() {
+    filtrosRef.current = { estado: '', q: '', pm: '', cliente: '', ingeniero: '' }
     setFiltroEstado('')
     if (busquedaRef.current) busquedaRef.current.value = ''
     setBusqueda('')
@@ -95,6 +137,7 @@ export default function ListaProyectos() {
     setFiltroCliente('')
     setFiltroIngeniero('')
     setFiltroInterno(false)
+    buscar()
   }
 
   const hayFiltros = filtroEstado || busqueda || filtroPM || filtroCliente || filtroIngeniero || filtroInterno
@@ -147,7 +190,7 @@ export default function ListaProyectos() {
         />
         <select
           value={filtroEstado}
-          onChange={e => setFiltroEstado(e.target.value)}
+          onChange={handleEstadoChange}
           className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4E738A]/30"
         >
           <option value="">Todos los estados</option>
@@ -157,7 +200,7 @@ export default function ListaProyectos() {
       <div className="flex gap-3 mb-4 flex-wrap">
         <select
           value={filtroPM}
-          onChange={e => setFiltroPM(e.target.value)}
+          onChange={handlePMChange}
           className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4E738A]/30 flex-1 min-w-40"
         >
           <option value="">PM — todos</option>
@@ -173,7 +216,7 @@ export default function ListaProyectos() {
         />
         <select
           value={filtroIngeniero}
-          onChange={e => setFiltroIngeniero(e.target.value)}
+          onChange={handleIngenieroChange}
           className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4E738A]/30 flex-1 min-w-40"
         >
           <option value="">Ingeniero a cargo — todos</option>
