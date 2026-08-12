@@ -102,7 +102,7 @@ export default function ListaProyectos() {
     buscar()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function buscar() {
+  const buscar = useCallback(async () => {
     setCargando(true)
     try {
       const f = filtrosRef.current
@@ -115,11 +115,11 @@ export default function ListaProyectos() {
       const data = await getProyectos(params)
       setProyectos(Array.isArray(data) ? data : [])
     } catch {
-      // silencioso
+      setProyectos([])
     } finally {
       setCargando(false)
     }
-  }
+  }, [])
 
   function handleEstadoChange(e) {
     const val = e.target.value
@@ -158,6 +158,20 @@ export default function ListaProyectos() {
     setFiltroInterno(false)
     buscar()
   }
+
+  const handleBusquedaChange = useCallback((q) => {
+    filtrosRef.current.q = q
+    buscar()
+  }, [buscar])
+
+  const handleClienteChange = useCallback((c) => {
+    filtrosRef.current.cliente = c
+    buscar()
+  }, [buscar])
+
+  const handleLimpiarFiltros = useCallback(() => {
+    limpiarFiltros()
+  }, [buscar]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const hayFiltros = filtroEstado || filtroPM || filtroIngeniero || filtroInterno
   const filtrados = proyectos.filter(p => !filtroInterno || p.es_interno === 1)
@@ -200,9 +214,9 @@ export default function ListaProyectos() {
       {/* Filtros */}
       <div className="flex gap-3 mb-2 flex-wrap">
         <FiltrosBusqueda
-          onBusquedaChange={q => { filtrosRef.current.q = q; buscar() }}
-          onClienteChange={c => { filtrosRef.current.cliente = c; buscar() }}
-          onLimpiar={limpiarFiltros}
+          onBusquedaChange={handleBusquedaChange}
+          onClienteChange={handleClienteChange}
+          onLimpiar={handleLimpiarFiltros}
           hayFiltros={hayFiltros}
         />
         <select
