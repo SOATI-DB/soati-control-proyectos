@@ -177,6 +177,12 @@ export const getUsuarios = () =>
     .then(users => Array.isArray(users) ? users : [])
     .catch(() => [])
 
+export const getComercialesCP = () =>
+  fetch(`${BASE}/api/proyectos/comerciales`, { headers: headers() })
+    .then(r => r.json())
+    .then(users => Array.isArray(users) ? users : [])
+    .catch(() => [])
+
 // Recursos
 export const getRecursosDisponibles = (tipo) =>
   fetch(`${BASE}/api/recursos/disponibles${tipo ? `?tipo=${tipo}` : ''}`,

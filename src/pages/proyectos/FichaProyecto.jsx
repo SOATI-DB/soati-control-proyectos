@@ -9,7 +9,7 @@ import {
   crearContacto, actualizarContacto, eliminarContacto,
   crearHito, actualizarHito, eliminarHito,
   subirAdjuntoProyecto, descargarAdjuntoProyecto, eliminarAdjuntoProyecto,
-  getRecursosIngenieria, getPMs,
+  getRecursosIngenieria, getPMs, getComercialesCP,
   getRecursosDisponibles, verificarDisponibilidad, asignarRecurso, eliminarRecurso, getRecursosTarea,
   crearSubproyecto, actualizarSubproyecto, eliminarSubproyecto,
 } from '../../services/api'
@@ -40,8 +40,9 @@ export default function FichaProyecto() {
   const [proyecto, setProyecto] = useState(null)
   const [cargando, setCargando] = useState(true)
   const [tab, setTab] = useState('General')
-  const [ingenieros, setIngenieros] = useState([])
-  const [pms, setPms] = useState([])
+  const [ingenieros,   setIngenieros]   = useState([])
+  const [pms,          setPms]          = useState([])
+  const [comerciales,  setComerciales]  = useState([])
 
   // General edit
   const [editandoFicha, setEditandoFicha] = useState(false)
@@ -103,6 +104,7 @@ export default function FichaProyecto() {
     cargar()
     getRecursosIngenieria().then(setIngenieros)
     getPMs().then(setPms)
+    getComercialesCP().then(setComerciales).catch(() => {})
     getRecursosDisponibles().then(data => setRecursosDisponibles(Array.isArray(data) ? data : []))
   }, [id])
 
@@ -143,8 +145,10 @@ export default function FichaProyecto() {
       descripcion:           proyecto.descripcion || '',
       fecha_inicio_plan:     proyecto.fecha_inicio_plan?.slice(0, 10) || '',
       fecha_entrega_plan:    proyecto.fecha_entrega_plan?.slice(0, 10) || '',
-      fecha_inicio_real:     proyecto.fecha_inicio_real?.slice(0, 10) || '',
-      fecha_entrega_real:    proyecto.fecha_entrega_real?.slice(0, 10) || '',
+      fecha_inicio_real:       proyecto.fecha_inicio_real?.slice(0, 10) || '',
+      fecha_entrega_real:      proyecto.fecha_entrega_real?.slice(0, 10) || '',
+      ejecutivo_ventas_id:     proyecto.ejecutivo_ventas_id != null ? String(proyecto.ejecutivo_ventas_id) : '',
+      ejecutivo_ventas_nombre: proyecto.ejecutivo_ventas_nombre || '',
     })
     setEditandoFicha(true)
   }
@@ -160,6 +164,8 @@ export default function FichaProyecto() {
     if (ing) data.ingeniero_cargo_nombre = ing.nombre
     const pm = pms.find(u => String(u.id) === String(fichaForm.pm_id))
     if (pm) data.pm_nombre = pm.nombre
+    const com = comerciales.find(u => String(u.id) === String(fichaForm.ejecutivo_ventas_id))
+    if (com) data.ejecutivo_ventas_nombre = com.nombre
     await actualizarFicha(id, data)
     await cargar()
     setEditandoFicha(false)
@@ -421,6 +427,24 @@ export default function FichaProyecto() {
                   >
                     <option value="">— Sin asignar —</option>
                     {ingenieros.map(u => <option key={u.id} value={String(u.id)}>{u.nombre}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Comercial</label>
+                  <select
+                    value={fichaForm.ejecutivo_ventas_id || ''}
+                    onChange={e => {
+                      const sel = comerciales.find(u => String(u.id) === e.target.value)
+                      setFichaForm(f => ({
+                        ...f,
+                        ejecutivo_ventas_id:     e.target.value,
+                        ejecutivo_ventas_nombre: sel?.nombre ?? '',
+                      }))
+                    }}
+                    className={inp()}
+                  >
+                    <option value="">— Sin asignar —</option>
+                    {comerciales.map(u => <option key={u.id} value={String(u.id)}>{u.nombre}</option>)}
                   </select>
                 </div>
                 <div>
@@ -1140,6 +1164,8 @@ export default function FichaProyecto() {
                           <option value="ingenieria">Ingeniería</option>
                           <option value="planos">Planos</option>
                           <option value="diseno">Diseño</option>
+                          <option value="ensamble">Técnico de ensamble</option>
+                          <option value="campo">Técnico de campo</option>
                         </select></div>
 
                       {subFormData.tipo_recurso && (

@@ -36,6 +36,7 @@ export default function ListaProyectos() {
   const [proyectos, setProyectos] = useState([])
   const [cargando, setCargando] = useState(true)
   const [filtroEstado, setFiltroEstado] = useState('')
+  const [busquedaInput, setBusquedaInput] = useState('')
   const [busqueda, setBusqueda] = useState('')
   const [filtroPM, setFiltroPM] = useState('')
   const [filtroCliente, setFiltroCliente] = useState('')
@@ -50,6 +51,12 @@ export default function ListaProyectos() {
     getPMs().then(setListaPMs)
     getRecursosIngenieria().then(setListaIngenieros)
   }, [])
+
+  // Debounce — actualiza busqueda 400ms después de dejar de escribir
+  useEffect(() => {
+    const timer = setTimeout(() => setBusqueda(busquedaInput), 400)
+    return () => clearTimeout(timer)
+  }, [busquedaInput])
 
   useEffect(() => {
     setCargando(true)
@@ -74,6 +81,7 @@ export default function ListaProyectos() {
 
   function limpiarFiltros() {
     setFiltroEstado('')
+    setBusquedaInput('')
     setBusqueda('')
     setFiltroPM('')
     setFiltroCliente('')
@@ -124,8 +132,8 @@ export default function ListaProyectos() {
         <input
           type="text"
           placeholder="Buscar por nombre o código..."
-          value={busqueda}
-          onChange={e => setBusqueda(e.target.value)}
+          value={busquedaInput}
+          onChange={e => setBusquedaInput(e.target.value)}
           className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4E738A]/30 flex-1 min-w-48"
         />
         <select

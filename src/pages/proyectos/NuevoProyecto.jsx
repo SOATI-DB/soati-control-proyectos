@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getPMs, getRecursosIngenieria } from '../../services/api'
+import { getPMs, getRecursosIngenieria, getComercialesCP } from '../../services/api'
 
 const BASE      = import.meta.env.VITE_API_URL      || 'http://localhost:3011'
 const SHELL_API = import.meta.env.VITE_SHELL_API_URL || 'http://localhost:3001'
@@ -34,32 +34,36 @@ export default function NuevoProyecto() {
   const [errores,        setErrores]        = useState({})
   const [usuarios,       setUsuarios]       = useState([])
   const [ingenieros,     setIngenieros]     = useState([])
+  const [comerciales,    setComerciales]    = useState([])
   const [todosProyectos, setTodosProyectos] = useState([])
   const [sugerencias,    setSugerencias]    = useState([])
   const [mostrarLista,   setMostrarLista]   = useState(false)
 
   const [form, setForm] = useState({
-    es_interno:         false,
-    codigo:             '',
-    nombre:             '',
-    tipo_contratacion:  'contratacion_privada',
-    cliente_nombre:     '',
-    cliente_codigo:     '',
-    pm_id:              '',
-    ingeniero_cargo_id: '',
-    lugar_geografico:   '',
-    fecha_inicio_plan:  '',
-    fecha_entrega_plan: '',
-    presupuesto_usd:    '',
-    requiere_diseno:    false,
-    requiere_planos:    false,
-    descripcion:        '',
-    shell_proyecto_id:  null,
+    es_interno:              false,
+    codigo:                  '',
+    nombre:                  '',
+    tipo_contratacion:       'contratacion_privada',
+    cliente_nombre:          '',
+    cliente_codigo:          '',
+    pm_id:                   '',
+    ingeniero_cargo_id:      '',
+    ejecutivo_ventas_id:     '',
+    ejecutivo_ventas_nombre: '',
+    lugar_geografico:        '',
+    fecha_inicio_plan:       '',
+    fecha_entrega_plan:      '',
+    presupuesto_usd:         '',
+    requiere_diseno:         false,
+    requiere_planos:         false,
+    descripcion:             '',
+    shell_proyecto_id:       null,
   })
 
   useEffect(() => {
     getPMs().then(setUsuarios)
     getRecursosIngenieria().then(setIngenieros)
+    getComercialesCP().then(setComerciales).catch(() => {})
     cargarProyectosShell().then(setTodosProyectos).catch(() => {})
   }, [])
 
@@ -126,20 +130,23 @@ export default function NuevoProyecto() {
     if (!validar()) return
     setGuardando(true)
     try {
-      const pmSel  = usuarios.find(u => String(u.id) === String(form.pm_id))
-      const ingSel = ingenieros.find(u => String(u.id) === String(form.ingeniero_cargo_id))
+      const pmSel   = usuarios.find(u => String(u.id) === String(form.pm_id))
+      const ingSel  = ingenieros.find(u => String(u.id) === String(form.ingeniero_cargo_id))
+      const comSel  = comerciales.find(u => String(u.id) === String(form.ejecutivo_ventas_id))
 
       const body = {
-        es_interno:             form.es_interno,
-        codigo:                 form.es_interno ? undefined : form.codigo.trim(),
-        nombre:                 form.nombre.trim(),
-        tipo_contratacion:      form.es_interno ? 'interno' : form.tipo_contratacion,
-        cliente_nombre:         form.es_interno ? null : form.cliente_nombre.trim(),
-        cliente_codigo:         form.es_interno ? null : form.cliente_codigo.trim().toUpperCase(),
-        pm_id:                  form.pm_id || null,
-        pm_nombre:              pmSel?.nombre || null,
-        ingeniero_cargo_id:     form.ingeniero_cargo_id || null,
-        ingeniero_cargo_nombre: ingSel?.nombre || null,
+        es_interno:              form.es_interno,
+        codigo:                  form.es_interno ? undefined : form.codigo.trim(),
+        nombre:                  form.nombre.trim(),
+        tipo_contratacion:       form.es_interno ? 'interno' : form.tipo_contratacion,
+        cliente_nombre:          form.es_interno ? null : form.cliente_nombre.trim(),
+        cliente_codigo:          form.es_interno ? null : form.cliente_codigo.trim().toUpperCase(),
+        pm_id:                   form.pm_id || null,
+        pm_nombre:               pmSel?.nombre || null,
+        ingeniero_cargo_id:      form.ingeniero_cargo_id || null,
+        ingeniero_cargo_nombre:  ingSel?.nombre || null,
+        ejecutivo_ventas_id:     form.ejecutivo_ventas_id || null,
+        ejecutivo_ventas_nombre: comSel?.nombre || null,
         lugar_geografico:       form.lugar_geografico.trim() || null,
         fecha_inicio_plan:      form.fecha_inicio_plan  || null,
         fecha_entrega_plan:     form.fecha_entrega_plan || null,
@@ -364,6 +371,23 @@ export default function NuevoProyecto() {
                 >
                   <option value="">Sin asignar</option>
                   {ingenieros.map(u => (
+                    <option key={u.id} value={u.id}>{u.nombre}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Comercial responsable</label>
+                <select
+                  value={form.ejecutivo_ventas_id}
+                  onChange={e => {
+                    const sel = comerciales.find(u => String(u.id) === e.target.value)
+                    setField('ejecutivo_ventas_id', e.target.value)
+                    setField('ejecutivo_ventas_nombre', sel?.nombre ?? '')
+                  }}
+                  className={inp('ejecutivo_ventas_id')}
+                >
+                  <option value="">— Sin asignar —</option>
+                  {comerciales.map(u => (
                     <option key={u.id} value={u.id}>{u.nombre}</option>
                   ))}
                 </select>
