@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getProyectos, getPMs, getRecursosIngenieria } from '../../services/api'
 import { formatFecha } from '../../utils/fecha'
@@ -30,19 +30,62 @@ function diasParaVencer(fecha) {
   return Math.ceil((d - HOY) / (1000 * 60 * 60 * 24))
 }
 
+const FiltrosBusqueda = React.memo(function FiltrosBusqueda({ onBusquedaChange, onClienteChange, onLimpiar, hayFiltros }) {
+  const [busquedaLocal, setBusquedaLocal] = useState('')
+  const [clienteLocal, setClienteLocal] = useState('')
+  const busquedaTimer = useRef(null)
+  const clienteTimer = useRef(null)
+
+  function handleBusqueda(e) {
+    setBusquedaLocal(e.target.value)
+    clearTimeout(busquedaTimer.current)
+    busquedaTimer.current = setTimeout(() => onBusquedaChange(e.target.value), 400)
+  }
+
+  function handleCliente(e) {
+    setClienteLocal(e.target.value)
+    clearTimeout(clienteTimer.current)
+    clienteTimer.current = setTimeout(() => onClienteChange(e.target.value), 400)
+  }
+
+  function handleLimpiar() {
+    setBusquedaLocal('')
+    setClienteLocal('')
+    onLimpiar()
+  }
+
+  return (
+    <>
+      <input
+        type="text"
+        value={busquedaLocal}
+        onChange={handleBusqueda}
+        placeholder="Buscar por nombre o código..."
+        className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4E738A]/30 flex-1 min-w-48"
+      />
+      <input
+        type="text"
+        value={clienteLocal}
+        onChange={handleCliente}
+        placeholder="Filtrar por cliente..."
+        className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4E738A]/30 flex-1 min-w-40"
+      />
+      {(hayFiltros || busquedaLocal || clienteLocal) && (
+        <button onClick={handleLimpiar} className="border border-gray-300 rounded-lg px-3 py-2 text-sm text-[#5f6b75] hover:bg-gray-50 transition-colors whitespace-nowrap">
+          Limpiar filtros
+        </button>
+      )}
+    </>
+  )
+})
+
 export default function ListaProyectos() {
   const navigate = useNavigate()
   const { user, tienePermiso } = useAuth()
   const [proyectos, setProyectos] = useState([])
   const [cargando, setCargando] = useState(true)
   const [filtroEstado, setFiltroEstado] = useState('')
-  const busquedaRef      = useRef(null)
-  const busquedaTimerRef = useRef(null)
-  const [busqueda, setBusqueda] = useState('')
   const [filtroPM, setFiltroPM] = useState('')
-  const clienteRef      = useRef(null)
-  const clienteTimerRef = useRef(null)
-  const [filtroCliente, setFiltroCliente] = useState('')
   const [filtroIngeniero, setFiltroIngeniero] = useState('')
   const [filtroInterno, setFiltroInterno] = useState(false)
   const [listaPMs, setListaPMs] = useState([])
@@ -78,26 +121,6 @@ export default function ListaProyectos() {
     }
   }
 
-  function handleBusquedaChange(e) {
-    clearTimeout(busquedaTimerRef.current)
-    const val = e.target.value
-    busquedaTimerRef.current = setTimeout(() => {
-      filtrosRef.current.q = val
-      setBusqueda(val)
-      buscar()
-    }, 400)
-  }
-
-  function handleClienteChange(e) {
-    clearTimeout(clienteTimerRef.current)
-    const val = e.target.value
-    clienteTimerRef.current = setTimeout(() => {
-      filtrosRef.current.cliente = val
-      setFiltroCliente(val)
-      buscar()
-    }, 400)
-  }
-
   function handleEstadoChange(e) {
     const val = e.target.value
     filtrosRef.current.estado = val
@@ -130,17 +153,13 @@ export default function ListaProyectos() {
   function limpiarFiltros() {
     filtrosRef.current = { estado: '', q: '', pm: '', cliente: '', ingeniero: '' }
     setFiltroEstado('')
-    if (busquedaRef.current) busquedaRef.current.value = ''
-    setBusqueda('')
     setFiltroPM('')
-    if (clienteRef.current) clienteRef.current.value = ''
-    setFiltroCliente('')
     setFiltroIngeniero('')
     setFiltroInterno(false)
     buscar()
   }
 
-  const hayFiltros = filtroEstado || busqueda || filtroPM || filtroCliente || filtroIngeniero || filtroInterno
+  const hayFiltros = filtroEstado || filtroPM || filtroIngeniero || filtroInterno
   const filtrados = proyectos.filter(p => !filtroInterno || p.es_interno === 1)
 
   if (cargando) return (
@@ -180,13 +199,11 @@ export default function ListaProyectos() {
 
       {/* Filtros */}
       <div className="flex gap-3 mb-2 flex-wrap">
-        <input
-          ref={busquedaRef}
-          type="text"
-          defaultValue=""
-          placeholder="Buscar por nombre o código..."
-          onChange={handleBusquedaChange}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4E738A]/30 flex-1 min-w-48"
+        <FiltrosBusqueda
+          onBusquedaChange={q => { filtrosRef.current.q = q; buscar() }}
+          onClienteChange={c => { filtrosRef.current.cliente = c; buscar() }}
+          onLimpiar={limpiarFiltros}
+          hayFiltros={hayFiltros}
         />
         <select
           value={filtroEstado}
@@ -206,14 +223,6 @@ export default function ListaProyectos() {
           <option value="">PM — todos</option>
           {listaPMs.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
         </select>
-        <input
-          type="text"
-          placeholder="Filtrar por cliente..."
-          ref={clienteRef}
-          defaultValue=""
-          onChange={handleClienteChange}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4E738A]/30 flex-1 min-w-40"
-        />
         <select
           value={filtroIngeniero}
           onChange={handleIngenieroChange}
@@ -231,14 +240,6 @@ export default function ListaProyectos() {
           />
           Solo internos
         </label>
-        {hayFiltros && (
-          <button
-            onClick={limpiarFiltros}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm text-[#5f6b75] hover:bg-gray-50 transition-colors whitespace-nowrap"
-          >
-            Limpiar filtros
-          </button>
-        )}
       </div>
 
       {/* Tabla */}
