@@ -39,7 +39,8 @@ export default function ListaProyectos() {
   const [busquedaInput, setBusquedaInput] = useState('')
   const [busqueda, setBusqueda] = useState('')
   const [filtroPM, setFiltroPM] = useState('')
-  const [filtroCliente, setFiltroCliente] = useState('')
+  const [filtroClienteInput, setFiltroClienteInput] = useState('')
+  const [filtroCliente, setFiltroCliente]           = useState('')
   const [filtroIngeniero, setFiltroIngeniero] = useState('')
   const [filtroInterno, setFiltroInterno] = useState(false)
   const [listaPMs, setListaPMs] = useState([])
@@ -57,6 +58,11 @@ export default function ListaProyectos() {
     const timer = setTimeout(() => setBusqueda(busquedaInput), 400)
     return () => clearTimeout(timer)
   }, [busquedaInput])
+
+  useEffect(() => {
+    const timer = setTimeout(() => setFiltroCliente(filtroClienteInput), 400)
+    return () => clearTimeout(timer)
+  }, [filtroClienteInput])
 
   useEffect(() => {
     setCargando(true)
@@ -84,6 +90,7 @@ export default function ListaProyectos() {
     setBusquedaInput('')
     setBusqueda('')
     setFiltroPM('')
+    setFiltroClienteInput('')
     setFiltroCliente('')
     setFiltroIngeniero('')
     setFiltroInterno(false)
@@ -157,8 +164,8 @@ export default function ListaProyectos() {
         <input
           type="text"
           placeholder="Filtrar por cliente..."
-          value={filtroCliente}
-          onChange={e => setFiltroCliente(e.target.value)}
+          value={filtroClienteInput}
+          onChange={e => setFiltroClienteInput(e.target.value)}
           className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4E738A]/30 flex-1 min-w-40"
         />
         <select
