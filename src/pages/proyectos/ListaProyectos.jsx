@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getProyectos, getPMs, getRecursosIngenieria } from '../../services/api'
 import { formatFecha } from '../../utils/fecha'
@@ -36,11 +36,13 @@ export default function ListaProyectos() {
   const [proyectos, setProyectos] = useState([])
   const [cargando, setCargando] = useState(true)
   const [filtroEstado, setFiltroEstado] = useState('')
-  const [busquedaInput, setBusquedaInput] = useState('')
+  const busquedaRef      = useRef(null)
+  const busquedaTimerRef = useRef(null)
   const [busqueda, setBusqueda] = useState('')
   const [filtroPM, setFiltroPM] = useState('')
-  const [filtroClienteInput, setFiltroClienteInput] = useState('')
-  const [filtroCliente, setFiltroCliente]           = useState('')
+  const clienteRef      = useRef(null)
+  const clienteTimerRef = useRef(null)
+  const [filtroCliente, setFiltroCliente] = useState('')
   const [filtroIngeniero, setFiltroIngeniero] = useState('')
   const [filtroInterno, setFiltroInterno] = useState(false)
   const [listaPMs, setListaPMs] = useState([])
@@ -53,16 +55,15 @@ export default function ListaProyectos() {
     getRecursosIngenieria().then(setListaIngenieros)
   }, [])
 
-  // Debounce — actualiza busqueda 400ms después de dejar de escribir
-  useEffect(() => {
-    const timer = setTimeout(() => setBusqueda(busquedaInput), 400)
-    return () => clearTimeout(timer)
-  }, [busquedaInput])
+  function handleBusquedaChange(e) {
+    clearTimeout(busquedaTimerRef.current)
+    busquedaTimerRef.current = setTimeout(() => setBusqueda(e.target.value), 400)
+  }
 
-  useEffect(() => {
-    const timer = setTimeout(() => setFiltroCliente(filtroClienteInput), 400)
-    return () => clearTimeout(timer)
-  }, [filtroClienteInput])
+  function handleClienteChange(e) {
+    clearTimeout(clienteTimerRef.current)
+    clienteTimerRef.current = setTimeout(() => setFiltroCliente(e.target.value), 400)
+  }
 
   useEffect(() => {
     setCargando(true)
@@ -87,10 +88,10 @@ export default function ListaProyectos() {
 
   function limpiarFiltros() {
     setFiltroEstado('')
-    setBusquedaInput('')
+    if (busquedaRef.current) busquedaRef.current.value = ''
     setBusqueda('')
     setFiltroPM('')
-    setFiltroClienteInput('')
+    if (clienteRef.current) clienteRef.current.value = ''
     setFiltroCliente('')
     setFiltroIngeniero('')
     setFiltroInterno(false)
@@ -137,10 +138,11 @@ export default function ListaProyectos() {
       {/* Filtros */}
       <div className="flex gap-3 mb-2 flex-wrap">
         <input
+          ref={busquedaRef}
           type="text"
+          defaultValue=""
           placeholder="Buscar por nombre o código..."
-          value={busquedaInput}
-          onChange={e => setBusquedaInput(e.target.value)}
+          onChange={handleBusquedaChange}
           className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4E738A]/30 flex-1 min-w-48"
         />
         <select
@@ -164,8 +166,9 @@ export default function ListaProyectos() {
         <input
           type="text"
           placeholder="Filtrar por cliente..."
-          value={filtroClienteInput}
-          onChange={e => setFiltroClienteInput(e.target.value)}
+          ref={clienteRef}
+          defaultValue=""
+          onChange={handleClienteChange}
           className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4E738A]/30 flex-1 min-w-40"
         />
         <select
