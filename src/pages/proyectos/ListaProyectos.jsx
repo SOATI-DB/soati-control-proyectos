@@ -83,7 +83,7 @@ export default function ListaProyectos() {
   const navigate = useNavigate()
   const { user, tienePermiso } = useAuth()
   const [proyectos, setProyectos] = useState([])
-  const [cargando, setCargando] = useState(true)
+  const [cargandoInicial, setCargandoInicial] = useState(true)
   const [filtroEstado, setFiltroEstado] = useState('')
   const [filtroPM, setFiltroPM] = useState('')
   const [filtroIngeniero, setFiltroIngeniero] = useState('')
@@ -99,11 +99,11 @@ export default function ListaProyectos() {
   useEffect(() => {
     getPMs().then(setListaPMs)
     getRecursosIngenieria().then(setListaIngenieros)
-    buscar()
+    buscar(true)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const buscar = useCallback(async () => {
-    setCargando(true)
+  const buscar = useCallback(async (esInicial = false) => {
+    if (esInicial) setCargandoInicial(true)
     try {
       const f = filtrosRef.current
       const params = {}
@@ -117,7 +117,7 @@ export default function ListaProyectos() {
     } catch {
       setProyectos([])
     } finally {
-      setCargando(false)
+      if (esInicial) setCargandoInicial(false)
     }
   }, [])
 
@@ -176,7 +176,7 @@ export default function ListaProyectos() {
   const hayFiltros = filtroEstado || filtroPM || filtroIngeniero || filtroInterno
   const filtrados = proyectos.filter(p => !filtroInterno || p.es_interno === 1)
 
-  if (cargando) return (
+  if (cargandoInicial) return (
     <div className="flex items-center justify-center py-16 text-[#5f6b75] text-sm">Cargando...</div>
   )
 
