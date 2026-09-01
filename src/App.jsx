@@ -9,13 +9,17 @@ import NuevoProyecto from './pages/proyectos/NuevoProyecto'
 import TransferenciasPendientes from './pages/proyectos/TransferenciasPendientes'
 import Configuracion from './pages/proyectos/Configuracion'
 import CalendarioRecursos from './pages/proyectos/CalendarioRecursos'
+import ListaServicios from './pages/servicios/ListaServicios'
+import FichaServicio from './pages/servicios/FichaServicio'
+import NuevoServicio from './pages/servicios/NuevoServicio'
 
-function Layout({ children, user, puedeVerProyectos, puedeAprobar, puedeConfigurar, puedeVerRecursos }) {
+function Layout({ children, user, puedeVerProyectos, puedeAprobar, puedeConfigurar, puedeVerRecursos, puedeVerServicios }) {
   const tabs = [
-    { to: '/proyectos',                label: 'Proyectos',               mostrar: puedeVerProyectos },
+    { to: '/proyectos',                label: 'Proyectos',      mostrar: puedeVerProyectos },
+    { to: '/servicios',                label: 'Servicios',      mostrar: puedeVerServicios },
     { to: '/transferencias-pendientes', label: 'Transferencias', mostrar: puedeAprobar },
-    { to: '/recursos',                 label: 'Recursos',                 mostrar: puedeVerRecursos },
-    { to: '/configuracion',            label: 'Configuración',            mostrar: puedeConfigurar },
+    { to: '/recursos',                 label: 'Recursos',       mostrar: puedeVerRecursos },
+    { to: '/configuracion',            label: 'Configuración',  mostrar: puedeConfigurar },
   ].filter(t => t.mostrar)
 
   return (
@@ -68,13 +72,18 @@ export default function App() {
 
   if (!user) return <SinSesion tokenExpirado={tokenExpirado} />
 
-  const esAdmin             = user?.rol === 'admin'
-  const puedeVerProyectos   = esAdmin || tienePermiso('control-proyectos', 'ver_asignados') || tienePermiso('control-proyectos', 'ver_todos')
-  const puedeAprobar        = esAdmin || tienePermiso('control-proyectos', 'aprobar_transferencia')
-  const puedeConfigurar     = esAdmin || tienePermiso('control-proyectos', 'configurar')
-  const puedeVerRecursos    = esAdmin || tienePermiso('control-proyectos', 'gestionar_proyecto')
+  const esAdmin               = user?.rol === 'admin'
+  const puedeVerProyectos     = esAdmin || tienePermiso('control-proyectos', 'ver_asignados') || tienePermiso('control-proyectos', 'ver_todos')
+  const puedeVerServicios     = esAdmin || tienePermiso('control-proyectos', 'ver_servicios')
+  const puedeGestionarServ    = esAdmin || tienePermiso('control-proyectos', 'gestionar_servicios')
+  const puedeAprobarProyecto  = esAdmin || tienePermiso('control-proyectos', 'aprobar_transferencia_proyecto')
+  const puedeAprobarServicio  = esAdmin || tienePermiso('control-proyectos', 'aprobar_transferencia_servicio')
+  const puedeAprobar          = puedeAprobarProyecto || puedeAprobarServicio
+  const puedeConfigurar       = esAdmin || tienePermiso('control-proyectos', 'configurar')
+  const puedeVerRecursos      = esAdmin || tienePermiso('control-proyectos', 'gestionar_proyecto')
 
   const defaultRoute = puedeVerProyectos ? '/proyectos'
+    : puedeVerServicios ? '/servicios'
     : puedeAprobar ? '/transferencias-pendientes'
     : '/sin-acceso'
 
@@ -83,6 +92,7 @@ export default function App() {
       <Layout
         user={user}
         puedeVerProyectos={puedeVerProyectos}
+        puedeVerServicios={puedeVerServicios}
         puedeAprobar={puedeAprobar}
         puedeConfigurar={puedeConfigurar}
         puedeVerRecursos={puedeVerRecursos}
@@ -94,6 +104,14 @@ export default function App() {
             <Route path="/proyectos" element={<ListaProyectos />} />
             <Route path="/proyectos/nuevo" element={<NuevoProyecto />} />
             <Route path="/proyectos/:id" element={<FichaProyecto />} />
+          </>}
+
+          {puedeVerServicios && <>
+            <Route path="/servicios" element={<ListaServicios />} />
+            {puedeGestionarServ && (
+              <Route path="/servicios/nuevo" element={<NuevoServicio />} />
+            )}
+            <Route path="/servicios/:codigo" element={<FichaServicio />} />
           </>}
 
           {puedeAprobar && (

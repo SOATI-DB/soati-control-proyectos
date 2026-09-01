@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import { getCalendarioRecursos } from '../../services/api'
 import { formatFecha } from '../../utils/fecha'
 
+const CP_API = import.meta.env.VITE_API_URL ?? 'http://localhost:3011'
+const token = () => localStorage.getItem('soati_shell_token')
+
 const TIPOS = [
   { id: '',           label: 'Todos' },
   { id: 'ingenieria', label: 'Ingeniería' },
@@ -18,6 +21,37 @@ function colorProyecto(codigo) {
   let hash = 0
   for (const c of (codigo || '')) hash = (hash * 31 + c.charCodeAt(0)) % COLORES.length
   return COLORES[hash]
+}
+
+async function cargarTareasServicios(mes, anio) {
+  try {
+    const r = await fetch(
+      `${CP_API}/api/servicios/tareas-mes?mes=${mes}&anio=${anio}`,
+      { headers: { Authorization: `Bearer ${token()}` } }
+    )
+    if (!r.ok) return []
+    const tareas = await r.json()
+    return tareas.map(t => ({
+      ...t,
+      tipo:           'servicio',
+      usuario_id:     t.asignado_id ?? '_sin_asignar',
+      usuario_nombre: t.asignado_nombre ?? 'Sin asignar',
+      fecha_inicio:   t.fecha,
+      fecha_fin:      t.fecha,
+      codigo:         t.contrato_codigo,
+      tipo_recurso:   'servicio',
+      dedicacion_pct: 100,
+    }))
+  } catch { return [] }
+}
+
+function anchoBarra(asig) {
+  if (asig.hora_inicio && asig.hora_fin) {
+    const toMin = s => { const [h, m] = s.split(':').map(Number); return h * 60 + m }
+    const mins = Math.max(0, toMin(asig.hora_fin) - toMin(asig.hora_inicio))
+    return `${Math.min(100, (mins / (9.5 * 60)) * 100).toFixed(1)}%`
+  }
+  return '100%'
 }
 
 export default function CalendarioRecursos() {
@@ -38,9 +72,16 @@ export default function CalendarioRecursos() {
 
   useEffect(() => {
     setCargando(true)
-    getCalendarioRecursos(mesStr, tipo || undefined)
-      .then(data => { setAsignaciones(Array.isArray(data) ? data : []); setCargando(false) })
-      .catch(() => { setAsignaciones([]); setCargando(false) })
+    Promise.all([
+      getCalendarioRecursos(mesStr, tipo || undefined).catch(() => []),
+      cargarTareasServicios(month + 1, year).catch(() => []),
+    ]).then(([recursos, tareas]) => {
+      setAsignaciones([
+        ...(Array.isArray(recursos) ? recursos : []),
+        ...tareas,
+      ])
+      setCargando(false)
+    }).catch(() => { setAsignaciones([]); setCargando(false) })
   }, [mesStr, tipo])
 
   // Agrupar por usuario_nombre
@@ -139,8 +180,13 @@ export default function CalendarioRecursos() {
                     {asigs.map((asig, i) => (
                       <div
                         key={i}
-                        className="w-full mx-px rounded-sm cursor-pointer"
-                        style={{ backgroundColor: colorProyecto(asig.codigo), height: '10px' }}
+                        className="mx-px rounded-sm cursor-pointer"
+                        style={{
+                          backgroundColor: asig.tipo === 'servicio' ? '#EE7623' : colorProyecto(asig.codigo),
+                          height: '10px',
+                          opacity: asig.tipo === 'servicio' ? 0.85 : 1,
+                          width: anchoBarra(asig),
+                        }}
                         onMouseEnter={e => setTooltip({ x: e.clientX, y: e.clientY, asig })}
                         onMouseLeave={() => setTooltip(null)}
                       />
@@ -165,11 +211,17 @@ export default function CalendarioRecursos() {
           className="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-xs pointer-events-none"
           style={{ top: tooltip.y + 12, left: tooltip.x + 12, maxWidth: 220 }}
         >
+          {tooltip.asig.tipo === 'servicio' && (
+            <span className="inline-block mb-1 px-1.5 py-0.5 bg-orange-100 text-orange-700 text-[10px] rounded font-medium">SERVICIO</span>
+          )}
           <p className="font-semibold text-[#2C3A43] mb-1">{tooltip.asig.codigo}</p>
-          <p className="text-gray-500">{tooltip.asig.proyecto_nombre}</p>
-          <p className="text-gray-500">Tipo: {tooltip.asig.tipo_recurso}</p>
-          <p className="text-gray-500">{formatFecha(tooltip.asig.fecha_inicio)} — {formatFecha(tooltip.asig.fecha_fin)}</p>
-          {tooltip.asig.dedicacion_pct !== 100 && (
+          <p className="text-gray-500">{tooltip.asig.proyecto_nombre ?? tooltip.asig.titulo}</p>
+          {tooltip.asig.tipo !== 'servicio' && <p className="text-gray-500">Tipo: {tooltip.asig.tipo_recurso}</p>}
+          {tooltip.asig.tipo === 'servicio' && tooltip.asig.hora_inicio && (
+            <p className="text-gray-500">{String(tooltip.asig.hora_inicio).slice(0,5)} — {String(tooltip.asig.hora_fin).slice(0,5)}</p>
+          )}
+          {tooltip.asig.tipo !== 'servicio' && <p className="text-gray-500">{formatFecha(tooltip.asig.fecha_inicio)} — {formatFecha(tooltip.asig.fecha_fin)}</p>}
+          {tooltip.asig.tipo !== 'servicio' && tooltip.asig.dedicacion_pct !== 100 && (
             <p className="text-gray-500">Dedicación: {tooltip.asig.dedicacion_pct}%</p>
           )}
         </div>

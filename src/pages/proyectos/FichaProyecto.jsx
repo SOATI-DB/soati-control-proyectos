@@ -74,6 +74,9 @@ export default function FichaProyecto() {
 
   const [filtroFase, setFiltroFase] = useState('')
 
+  const [duracionUnidad, setDuracionUnidad] = useState('dias')
+  const [duracionValor, setDuracionValor] = useState('')
+
   // Edición inline de recursos
   const [editandoRecurso, setEditandoRecurso] = useState(null)
   const [formRecurso, setFormRecurso] = useState({})
@@ -198,6 +201,15 @@ export default function FichaProyecto() {
     setPendingRecursos([])
     setErrorModal(null)
     setErrorSubForm(null)
+    if (tipo === 'tarea') {
+      if (item?.duracion_horas) {
+        setDuracionUnidad('horas')
+        setDuracionValor(String(item.duracion_horas))
+      } else {
+        setDuracionUnidad('dias')
+        setDuracionValor(item?.duracion_dias ? String(item.duracion_dias) : '')
+      }
+    }
     if (tipo === 'tarea' && item?.id) {
       getRecursosTarea(item.id)
         .then(data => setRecursosEnTarea(Array.isArray(data) ? data : []))
@@ -269,9 +281,14 @@ export default function FichaProyecto() {
       if (tipo === 'fase') {
         item ? await actualizarFase(item.id, modalForm) : await crearFase(id, modalForm)
       } else if (tipo === 'tarea') {
+        const bodyTarea = {
+          ...modalForm,
+          duracion_dias:  duracionUnidad === 'dias'  && duracionValor ? parseFloat(duracionValor) : null,
+          duracion_horas: duracionUnidad === 'horas' && duracionValor ? parseFloat(duracionValor) : null,
+        }
         const tarea = item
-          ? await actualizarTarea(item.id, modalForm)
-          : await crearTarea(id, modalForm)
+          ? await actualizarTarea(item.id, bodyTarea)
+          : await crearTarea(id, bodyTarea)
         for (const r of pendingRecursos) {
           await asignarRecurso({ ...r, tarea_id: tarea?.id ?? null })
         }
@@ -1003,22 +1020,34 @@ export default function FichaProyecto() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">Duración estimada (días hábiles de trabajo)</label>
-                    <input type="number" min="0.1" step="0.1" value={modalForm.duracion_dias ?? ''}
-                      onChange={e => {
-                        const v = e.target.value
-                        setModalForm(f => {
-                          const next = { ...f, duracion_dias: v ? parseFloat(v) : null }
-                          if (v && f.fecha_inicio) {
-                            const fin = new Date(f.fecha_inicio)
+                    <label className="block text-xs text-gray-500 mb-1">Duración estimada</label>
+                    <div className="flex gap-1">
+                      <input
+                        type="number" min="0.1" step="0.1"
+                        value={duracionValor}
+                        onChange={e => {
+                          const v = e.target.value
+                          setDuracionValor(v)
+                          if (duracionUnidad === 'dias' && v && modalForm.fecha_inicio) {
+                            const fin = new Date(modalForm.fecha_inicio)
                             fin.setDate(fin.getDate() + Math.max(1, Math.ceil(parseFloat(v))) - 1)
-                            next.fecha_limite = fin.toISOString().split('T')[0]
+                            setModalForm(f => ({ ...f, fecha_limite: fin.toISOString().split('T')[0] }))
                           }
-                          return next
-                        })
-                      }}
-                      className={inp()} />
-                    <p className="text-[10px] text-gray-400 mt-0.5">Tiempo real de ejecución desde la fecha de inicio</p>
+                        }}
+                        className={`${inp()} flex-1`}
+                      />
+                      <select
+                        value={duracionUnidad}
+                        onChange={e => setDuracionUnidad(e.target.value)}
+                        className="border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4E738A]/30"
+                      >
+                        <option value="dias">Días</option>
+                        <option value="horas">Horas</option>
+                      </select>
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                      {duracionUnidad === 'horas' ? 'Horas de trabajo (1 jornada = 9.5 h)' : 'Días hábiles desde la fecha de inicio'}
+                    </p>
                   </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Tareas predecesoras</label>

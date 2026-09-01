@@ -12,9 +12,8 @@ const MODULO_CONFIG = {
   'gestion-trabajo':      { label: 'Gestión de Trabajo',      icono: '✅' },
   'control-proyectos':    { label: 'Control de Proyectos',    icono: '📊' },
   'comercial':            { label: 'Comercial',               icono: '💼' },
-  'inventario':           { label: 'Inventario de Bodega',    icono: '📦' },
+  'bodega':               { label: 'Bodega',                  icono: '📦' },
   'inventario-software':  { label: 'Inventario Software',     icono: '💻' },
-  'despacho':             { label: 'Despacho',                icono: '🚚' },
 }
 
 const isDev = import.meta.env.DEV
@@ -44,8 +43,7 @@ const RUTAS = isDev ? {
   'gestion-trabajo':     'http://localhost:5180',
   'control-proyectos':   'http://localhost:5181',
   'comercial':           'http://localhost:5186',
-  'inventario':          'http://localhost:5179',
-  'despacho':            'http://localhost:5183',
+  'bodega':              'http://localhost:5179',
 } : {
   'field-reports':       `${BASE}/field-reports`,
   'wang':                `${BASE}/wang`,
@@ -58,9 +56,8 @@ const RUTAS = isDev ? {
   'gestion-trabajo':     `${BASE}/gestion-trabajo`,
   'control-proyectos':   `${BASE}/control-proyectos`,
   'comercial':           `${BASE}/comercial`,
-  'inventario':          `${BASE}/inventario`,
+  'bodega':              `${BASE}/bodega`,
   'inventario-software': `${BASE}/inventario-software`,
-  'despacho':            `${BASE}/despacho`,
 }
 
 export function NavModulos({ modulos = [], shellUrl = '', usuarioNombre = '' }) {

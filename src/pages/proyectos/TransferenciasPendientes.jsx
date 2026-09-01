@@ -176,7 +176,15 @@ export default function TransferenciasPendientes() {
               {lista.map(t => (
                 <tr key={t.id}>
                   <td className="px-4 py-3 font-mono text-xs text-gray-600">{t.numero_trans}</td>
-                  <td className="px-4 py-3 font-medium text-[#2c3e50]">{t.nombre_proyecto}</td>
+                  <td className="px-4 py-3 font-medium text-[#2c3e50]">
+                    {t.nombre_proyecto}
+                    {t.tipo_transferencia === 'servicio' && (
+                      <span className="ml-2 px-1.5 py-0.5 bg-orange-100 text-orange-700 text-xs rounded font-medium">SERVICIO</span>
+                    )}
+                    {(!t.tipo_transferencia || t.tipo_transferencia === 'proyecto') && (
+                      <span className="ml-2 px-1.5 py-0.5 bg-[#e8f0f4] text-[#4E738A] text-xs rounded font-medium">PROYECTO</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-gray-600">{t.cliente_nombre || '—'}</td>
                   <td className="px-4 py-3 text-gray-600">{t.creado_por_nombre || '—'}</td>
                   <td className="px-4 py-3 text-xs text-gray-500">{formatFechaHora(t.fecha_envio)}</td>

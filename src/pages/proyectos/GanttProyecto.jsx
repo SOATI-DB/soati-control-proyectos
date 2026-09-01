@@ -39,6 +39,20 @@ function calcBarDuracion(fechaInicio, duracion, diaInicioStr, totalDias) {
   return calcBar(fechaInicio, fechaFin, diaInicioStr, totalDias)
 }
 
+function calcBarDuracionHoras(fechaInicio, duracionHoras, diaInicioStr, totalDias) {
+  if (!fechaInicio || !duracionHoras) return null
+  const ref = new Date(`${diaInicioStr}T12:00:00`)
+  const fi  = new Date(`${String(fechaInicio).slice(0, 10)}T12:00:00`)
+  const finRango = new Date(ref.getTime() + (totalDias - 1) * 86400000)
+  if (fi > finRango) return null
+  const inicioEfectivo = fi < ref ? ref : fi
+  const offsetDias = Math.floor((inicioEfectivo - ref) / 86400000)
+  const left  = (offsetDias / totalDias) * 100
+  const width = (parseFloat(duracionHoras) / 9.5 / totalDias) * 100
+  if (width <= 0) return null
+  return { left: `${left}%`, width: `${width}%` }
+}
+
 function calcBar(fechaInicio, fechaFin, diaInicio, totalDias) {
   if (!fechaInicio || !fechaFin) return null
   const fi = new Date(`${String(fechaInicio).slice(0, 10)}T12:00:00`)
@@ -149,6 +163,9 @@ export default function GanttProyecto({ proyecto, onEditarTarea }) {
   }
 
   function getBarTarea(t) {
+    if (t.duracion_horas && t.fecha_inicio) {
+      return calcBarDuracionHoras(t.fecha_inicio, t.duracion_horas, diaInicioStr, diasEnMes)
+    }
     if (t.duracion_dias && t.fecha_inicio) {
       return calcBarDuracion(t.fecha_inicio, t.duracion_dias, diaInicioStr, diasEnMes)
     }

@@ -1,6 +1,20 @@
 const SHELL_URL = import.meta.env.VITE_SHELL_URL ?? 'http://localhost:5173'
 
+function getOrgId() {
+  try {
+    const raw = localStorage.getItem('soati_shell_user')
+    if (!raw) return 'soati'
+    const user = JSON.parse(raw)
+    return user?.org_id || 'soati'
+  } catch {
+    return 'soati'
+  }
+}
+
 export default function AppHeader({ titulo, subtitulo, derecha }) {
+  const orgId = getOrgId()
+  const esEcommerce = orgId === 'ecommerce'
+
   return (
     <header
       className="bg-[#4E738A] text-white px-3 sm:px-6 flex items-stretch shadow-md shrink-0"
@@ -10,11 +24,19 @@ export default function AppHeader({ titulo, subtitulo, derecha }) {
         href={SHELL_URL}
         className="flex items-center border-r border-white/15 pr-4 sm:pr-6 mr-4 sm:mr-6 shrink-0 cursor-pointer"
       >
-        <img
-          src="/assets/brand/logo-soati-blanco.svg"
-          alt="SOATI"
-          className="h-8 sm:h-9 w-auto block"
-        />
+        {esEcommerce ? (
+          <img
+            src="/assets/brand/ecommerce-logo-blanco.svg"
+            alt="Ecommerce-SE"
+            className="h-8 sm:h-9 w-auto block"
+          />
+        ) : (
+          <img
+            src="/assets/brand/logo-soati-blanco.svg"
+            alt="SOATI"
+            className="h-8 sm:h-9 w-auto block"
+          />
+        )}
       </a>
 
       <div className="flex flex-col justify-center min-w-0 flex-1">
