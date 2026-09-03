@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { getTransferenciasPendientes, getTransferenciaPendiente } from '../../services/api'
 import { formatFecha, formatFechaHora } from '../../utils/fecha'
+import { SearchableSelect } from '../../components/ui/SearchableSelect'
 
-const BASE_COMERCIAL = import.meta.env.VITE_COMERCIAL_API_URL || 'http://localhost:3017'
+const BASE_CP = import.meta.env.VITE_API_URL || 'http://localhost:3011'
 const token = () => localStorage.getItem('soati_shell_token')
 
 async function revisarTransferencia(id, data) {
-  const r = await fetch(`${BASE_COMERCIAL}/api/transferencias/${id}/revisar`, {
+  const r = await fetch(`${BASE_CP}/api/transferencias/${id}/revisar`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
     body: JSON.stringify(data),
@@ -15,7 +16,7 @@ async function revisarTransferencia(id, data) {
 }
 
 async function descargarAdjunto(id, nombre) {
-  const res = await fetch(`${BASE_COMERCIAL}/api/adjuntos/${id}/descargar`, {
+  const res = await fetch(`${BASE_CP}/api/transferencias/adjuntos/${id}/descargar`, {
     headers: { Authorization: `Bearer ${token()}` },
   })
   const blob = await res.blob()
@@ -376,16 +377,17 @@ export default function TransferenciasPendientes() {
                   <>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">PM asignado — requerido al aprobar</label>
-                      <select
+                      <SearchableSelect
+                        options={[
+                          { value: '', label: '— Seleccionar PM —' },
+                          ...usuarios.map(u => ({ value: u.id, label: u.nombre }))
+                        ]}
                         value={pmId}
-                        onChange={e => setPmId(e.target.value)}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4E738A]/30"
-                      >
-                        <option value="">— Seleccionar PM —</option>
-                        {usuarios.map(u => (
-                          <option key={u.id} value={u.id}>{u.nombre}</option>
-                        ))}
-                      </select>
+                        onChange={val => setPmId(val)}
+                        placeholder="— Seleccionar PM —"
+                        searchPlaceholder="Buscar por nombre..."
+                        className="w-full"
+                      />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Comentario</label>

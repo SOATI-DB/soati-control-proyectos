@@ -1,6 +1,5 @@
-const BASE           = import.meta.env.VITE_API_URL           || 'http://localhost:3011'
-const BASE_COMERCIAL = import.meta.env.VITE_COMERCIAL_API_URL || 'http://localhost:3017'
-const SHELL_API      = import.meta.env.VITE_SHELL_API_URL     || 'http://localhost:3001'
+const BASE      = import.meta.env.VITE_API_URL          || 'http://localhost:3011'
+const SHELL_API = import.meta.env.VITE_SHELL_API_URL   || 'http://localhost:3001'
 
 const token = () => localStorage.getItem('soati_shell_token')
 const headers = () => ({
@@ -134,14 +133,14 @@ export const descargarAdjuntoProyecto = async (id, nombre) => {
 export const eliminarAdjuntoProyecto = (id) =>
   fetch(`${BASE}/api/adjuntos/${id}`, { method: 'DELETE', headers: headers() }).then(r => r.json())
 
-// Transferencias pendientes (bandeja admin) — usan comercial-api
+// Transferencias pendientes (bandeja admin) — proxied a través de CP-api
 export const getTransferenciasPendientes = (params = {}) => {
   const qs = new URLSearchParams(params).toString()
-  return fetch(`${BASE_COMERCIAL}/api/transferencias${qs ? '?' + qs : ''}`, { headers: headers() }).then(r => r.json())
+  return fetch(`${BASE}/api/transferencias${qs ? '?' + qs : ''}`, { headers: headers() }).then(r => r.json())
 }
 
 export const getTransferenciaPendiente = (id) =>
-  fetch(`${BASE_COMERCIAL}/api/transferencias/${id}`, { headers: headers() }).then(r => r.json())
+  fetch(`${BASE}/api/transferencias/${id}`, { headers: headers() }).then(r => r.json())
 
 // Configuración
 export const getConfig = () =>
@@ -152,15 +151,15 @@ export const actualizarConfig = (data) =>
     method: 'POST', headers: headers(), body: JSON.stringify(data),
   }).then(r => r.json())
 
-// Usuarios (desde shell-api)
+// Usuarios — proxied a través de CP-api (backend-to-backend a shell-api)
 export const getPMs = () =>
-  fetch(`${SHELL_API}/api/users/pms`, { headers: headers() })
+  fetch(`${BASE}/api/users/pms`, { headers: headers() })
     .then(r => r.json())
     .then(users => Array.isArray(users) ? users : [])
     .catch(() => [])
 
 export const getRecursosIngenieria = () =>
-  fetch(`${SHELL_API}/api/users/recursos?tipo=ingenieria`, { headers: headers() })
+  fetch(`${BASE}/api/users/recursos?tipo=ingenieria`, { headers: headers() })
     .then(r => r.json())
     .then(users => Array.isArray(users) ? users : [])
     .catch(() => [])

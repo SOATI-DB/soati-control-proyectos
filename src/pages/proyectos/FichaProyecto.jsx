@@ -14,6 +14,7 @@ import {
   crearSubproyecto, actualizarSubproyecto, eliminarSubproyecto,
 } from '../../services/api'
 import GanttProyecto from './GanttProyecto'
+import { SearchableSelect } from '../../components/ui/SearchableSelect'
 
 const TABS = ['General', 'Fases', 'Tareas', 'Gantt', 'Adjuntos', 'Contactos', 'Facturación', 'Costos']
 
@@ -423,46 +424,52 @@ export default function FichaProyecto() {
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">PM asignado</label>
-                  <select
+                  <SearchableSelect
+                    options={[
+                      { value: '', label: 'Sin asignar' },
+                      ...pms.map(u => ({ value: String(u.id), label: u.nombre }))
+                    ]}
                     value={fichaForm.pm_id || ''}
-                    onChange={e => {
-                      const sel = pms.find(u => String(u.id) === e.target.value)
-                      setFichaForm(f => ({ ...f, pm_id: e.target.value, pm_nombre: sel?.nombre || '' }))
+                    onChange={val => {
+                      const sel = pms.find(u => String(u.id) === val)
+                      setFichaForm(f => ({ ...f, pm_id: val, pm_nombre: sel?.nombre || '' }))
                     }}
-                    className={inp()}
-                  >
-                    <option value="">Sin asignar</option>
-                    {pms.map(u => <option key={u.id} value={String(u.id)}>{u.nombre}</option>)}
-                  </select>
+                    placeholder="Sin asignar"
+                    searchPlaceholder="Buscar PM..."
+                  />
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Ingeniero a cargo</label>
-                  <select
+                  <SearchableSelect
+                    options={[
+                      { value: '', label: '— Sin asignar —' },
+                      ...ingenieros.map(u => ({ value: String(u.id), label: u.nombre }))
+                    ]}
                     value={fichaForm.ingeniero_cargo_id}
-                    onChange={e => setFichaForm(f => ({ ...f, ingeniero_cargo_id: e.target.value }))}
-                    className={inp()}
-                  >
-                    <option value="">— Sin asignar —</option>
-                    {ingenieros.map(u => <option key={u.id} value={String(u.id)}>{u.nombre}</option>)}
-                  </select>
+                    onChange={val => setFichaForm(f => ({ ...f, ingeniero_cargo_id: val }))}
+                    placeholder="— Sin asignar —"
+                    searchPlaceholder="Buscar ingeniero..."
+                  />
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Comercial</label>
-                  <select
+                  <SearchableSelect
+                    options={[
+                      { value: '', label: '— Sin asignar —' },
+                      ...comerciales.map(u => ({ value: String(u.id), label: u.nombre }))
+                    ]}
                     value={fichaForm.ejecutivo_ventas_id || ''}
-                    onChange={e => {
-                      const sel = comerciales.find(u => String(u.id) === e.target.value)
+                    onChange={val => {
+                      const sel = comerciales.find(u => String(u.id) === val)
                       setFichaForm(f => ({
                         ...f,
-                        ejecutivo_ventas_id:     e.target.value,
+                        ejecutivo_ventas_id:     val,
                         ejecutivo_ventas_nombre: sel?.nombre ?? '',
                       }))
                     }}
-                    className={inp()}
-                  >
-                    <option value="">— Sin asignar —</option>
-                    {comerciales.map(u => <option key={u.id} value={String(u.id)}>{u.nombre}</option>)}
-                  </select>
+                    placeholder="— Sin asignar —"
+                    searchPlaceholder="Buscar comercial..."
+                  />
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Presupuesto estimado (USD)</label>
@@ -1337,13 +1344,19 @@ export default function FichaProyecto() {
                   {['pendiente','en_progreso','completada','bloqueada'].map(e => <option key={e} value={e}>{e}</option>)}
                 </select></div>
               <div><label className="block text-xs text-gray-500 mb-1">Responsable</label>
-                <select value={formSP.responsable_id || ''} onChange={e => {
-                  const u = ingenieros.find(x => String(x.id) === e.target.value)
-                  setFormSP(f => ({ ...f, responsable_id: e.target.value, responsable_nombre: u?.nombre || '' }))
-                }} className={inp()}>
-                  <option value="">— Sin responsable —</option>
-                  {ingenieros.map(u => <option key={u.id} value={String(u.id)}>{u.nombre}</option>)}
-                </select></div>
+                <SearchableSelect
+                  options={[
+                    { value: '', label: '— Sin responsable —' },
+                    ...ingenieros.map(u => ({ value: String(u.id), label: u.nombre }))
+                  ]}
+                  value={formSP.responsable_id || ''}
+                  onChange={val => {
+                    const u = ingenieros.find(x => String(x.id) === val)
+                    setFormSP(f => ({ ...f, responsable_id: val, responsable_nombre: u?.nombre || '' }))
+                  }}
+                  placeholder="— Sin responsable —"
+                  searchPlaceholder="Buscar responsable..."
+                /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="block text-xs text-gray-500 mb-1">Fecha inicio plan</label>
                   <input type="date" value={formSP.fecha_inicio_plan || ''} onChange={e => setFormSP(f => ({ ...f, fecha_inicio_plan: e.target.value }))} className={inp()} /></div>

@@ -80,7 +80,7 @@ export default function App() {
   const puedeAprobarServicio  = esAdmin || tienePermiso('control-proyectos', 'aprobar_transferencia_servicio')
   const puedeAprobar          = puedeAprobarProyecto || puedeAprobarServicio
   const puedeConfigurar       = esAdmin || tienePermiso('control-proyectos', 'configurar')
-  const puedeVerRecursos      = esAdmin || tienePermiso('control-proyectos', 'gestionar_proyecto')
+  const puedeVerRecursos      = esAdmin || tienePermiso('control-proyectos', 'gestionar_proyecto') || tienePermiso('control-proyectos', 'ver_recursos')
 
   const defaultRoute = puedeVerProyectos ? '/proyectos'
     : puedeVerServicios ? '/servicios'
