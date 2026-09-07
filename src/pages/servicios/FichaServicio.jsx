@@ -40,8 +40,7 @@ export default function FichaServicio() {
 
   async function cargarUsuarios() {
     try {
-      const SHELL_API = import.meta.env.VITE_SHELL_API_URL ?? 'http://localhost:3001'
-      const r = await fetch(`${SHELL_API}/api/users/recursos`, {
+      const r = await fetch(`${CP_API}/api/users/recursos`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       const data = await r.json()
