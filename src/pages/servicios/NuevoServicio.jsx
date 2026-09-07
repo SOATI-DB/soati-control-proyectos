@@ -1,12 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../../hooks/useAuth.js'
-
-const CP_API = import.meta.env.VITE_API_URL ?? 'http://localhost:3011'
+const CP_API    = import.meta.env.VITE_API_URL ?? 'http://localhost:3011'
+const TOKEN_KEY = 'soati_shell_token'
 
 export default function NuevoServicio() {
-  const { token } = useAuth()
-  const navigate  = useNavigate()
+  const navigate = useNavigate()
 
   const [form, setForm] = useState({
     nombre: '', cliente_nombre: '', cliente_codigo: '',
@@ -29,7 +27,7 @@ export default function NuevoServicio() {
     try {
       const r = await fetch(`${CP_API}/api/servicios/contratos`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
         body: JSON.stringify({
           ...form,
           cantidad_contratada:  form.cantidad_contratada  ? parseFloat(form.cantidad_contratada)  : null,

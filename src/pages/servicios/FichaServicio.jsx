@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth.js'
 
-const CP_API = import.meta.env.VITE_API_URL ?? 'http://localhost:3011'
+const CP_API    = import.meta.env.VITE_API_URL ?? 'http://localhost:3011'
+const TOKEN_KEY = 'soati_shell_token'
 
 export default function FichaServicio() {
   const { codigo } = useParams()
   const navigate   = useNavigate()
-  const { token, tienePermiso, esAdmin } = useAuth()
+  const { tienePermiso, esAdmin } = useAuth()
   const puedeGestionar = esAdmin || tienePermiso('control-proyectos', 'gestionar_servicios')
 
   const [contrato, setContrato] = useState(null)
@@ -28,7 +29,7 @@ export default function FichaServicio() {
     setLoading(true)
     try {
       const r = await fetch(`${CP_API}/api/servicios/contratos/${codigo}`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` }
       })
       if (!r.ok) { navigate('/servicios'); return }
       const data = await r.json()
@@ -41,7 +42,7 @@ export default function FichaServicio() {
   async function cargarUsuarios() {
     try {
       const r = await fetch(`${CP_API}/api/users/recursos`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` }
       })
       const data = await r.json()
       setUsuarios(Array.isArray(data) ? data : [])
@@ -53,7 +54,7 @@ export default function FichaServicio() {
     try {
       const r = await fetch(`${CP_API}/api/servicios/contratos/${codigo}/tareas`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
         body: JSON.stringify({
           ...formTarea,
           hora_inicio: formTarea.hora_inicio || null,
@@ -72,7 +73,7 @@ export default function FichaServicio() {
     try {
       await fetch(`${CP_API}/api/servicios/tareas/${tareaId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
         body: JSON.stringify({ estado: nuevoEstado })
       })
       cargar()
