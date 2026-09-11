@@ -10,6 +10,7 @@ const TIPOS = [
   { id: 'ingenieria', label: 'Ingeniería' },
   { id: 'planos',     label: 'Planos' },
   { id: 'diseno',     label: 'Diseño' },
+  { id: 'tecnicos',   label: 'Técnicos' },  // agrupa ensamble + campo
 ]
 
 const COLORES = [
@@ -116,16 +117,31 @@ export default function CalendarioRecursos() {
     const mesAnio    = parseInt(mesActual.split('-')[1])
     const anioActual = parseInt(mesActual.split('-')[0])
     setCargando(true)
-    Promise.all([
-      getCalendarioRecursos(mesActual, tipo || undefined).catch(() => []),
-      cargarTareasServicios(mesAnio, anioActual).catch(() => []),
-    ]).then(([recursos, tareas]) => {
-      setAsignaciones([
-        ...(Array.isArray(recursos) ? recursos : []),
-        ...tareas,
-      ])
-      setCargando(false)
-    }).catch(() => { setAsignaciones([]); setCargando(false) })
+    ;(async () => {
+      try {
+        let asigBase = []
+        if (tipo === 'tecnicos') {
+          const [ensamble, campo] = await Promise.all([
+            getCalendarioRecursos(mesActual, 'ensamble').catch(() => []),
+            getCalendarioRecursos(mesActual, 'campo').catch(() => []),
+          ])
+          asigBase = [...(Array.isArray(ensamble) ? ensamble : []),
+                      ...(Array.isArray(campo) ? campo : [])]
+        } else {
+          asigBase = await getCalendarioRecursos(mesActual, tipo || undefined).catch(() => [])
+          if (!Array.isArray(asigBase)) asigBase = []
+        }
+        const tareas = await cargarTareasServicios(mesAnio, anioActual).catch(() => [])
+        setAsignaciones([
+          ...asigBase,
+          ...(Array.isArray(tareas) ? tareas : []),
+        ])
+        setCargando(false)
+      } catch {
+        setAsignaciones([])
+        setCargando(false)
+      }
+    })()
   }, [mesStr, quincenaIdx, semanaOffset, tipo, vista]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Agrupar por usuario
@@ -137,6 +153,12 @@ export default function CalendarioRecursos() {
     usuariosMap[a.usuario_id].asignaciones.push(a)
   }
   const usuarios = Object.values(usuariosMap).sort((a, b) => a.nombre.localeCompare(b.nombre))
+
+  const usuariosFiltrados = (vista === 'mes')
+    ? usuarios
+    : usuarios.filter(u =>
+        u.asignaciones.some(a => dias.some(({ fecha }) => diaOcupado(a, fecha)))
+      )
 
   function diaOcupado(asig, fechaDia) {
     const d = new Date(fechaDia)
@@ -259,7 +281,7 @@ export default function CalendarioRecursos() {
         </div>
 
         {/* Filas por usuario */}
-        {usuarios.map(u => (
+        {usuariosFiltrados.map(u => (
           <div key={u.nombre} className="flex border-b border-gray-100 min-h-[40px]">
             <div className="w-40 shrink-0 px-2 py-1 text-xs text-[#2C3A43] font-medium truncate border-r border-gray-200 flex items-center">
               {u.nombre}
@@ -310,7 +332,7 @@ export default function CalendarioRecursos() {
           </div>
         ))}
 
-        {usuarios.length === 0 && !cargando && (
+        {usuariosFiltrados.length === 0 && !cargando && (
           <div className="flex items-center justify-center py-12">
             <p className="text-sm text-gray-400">Sin recursos asignados en este período</p>
           </div>
