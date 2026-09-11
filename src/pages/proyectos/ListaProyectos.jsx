@@ -88,11 +88,17 @@ export default function ListaProyectos() {
   const [filtroPM, setFiltroPM] = useState('')
   const [filtroIngeniero, setFiltroIngeniero] = useState('')
   const [filtroInterno, setFiltroInterno] = useState(false)
+  const [soloMisProyectos, setSoloMisProyectos] = useState(false)
   const [listaPMs, setListaPMs] = useState([])
   const [listaIngenieros, setListaIngenieros] = useState([])
 
   // Fuente de verdad para los parámetros del fetch — no causa re-renders
-  const filtrosRef = useRef({ estado: '', q: '', pm: '', cliente: '', ingeniero: '' })
+  const filtrosRef  = useRef({ estado: '', q: '', pm: '', cliente: '', ingeniero: '' })
+  const soloMisRef  = useRef(false)
+  const userIdRef   = useRef(null)
+
+  // Sincronizar user.id en ref para usarlo dentro de useCallback con deps []
+  useEffect(() => { userIdRef.current = user?.id ?? null }, [user])
 
   const puedeGestionar = user?.rol === 'admin' || tienePermiso('control-proyectos', 'gestionar_proyecto')
 
@@ -112,6 +118,7 @@ export default function ListaProyectos() {
       if (f.pm)        params.pm_id              = f.pm
       if (f.cliente)   params.cliente            = f.cliente
       if (f.ingeniero) params.ingeniero_cargo_id = f.ingeniero
+      if (soloMisRef.current && userIdRef.current) params.pm_id = userIdRef.current
       const data = await getProyectos(params)
       setProyectos(Array.isArray(data) ? data : [])
     } catch {
@@ -142,6 +149,12 @@ export default function ListaProyectos() {
     buscar()
   }
 
+  function handleSoloMisProyectos(val) {
+    soloMisRef.current = val
+    setSoloMisProyectos(val)
+    buscar()
+  }
+
   const activos = proyectos.filter(p => !['cerrado', 'cancelado'].includes(p.estado))
   const enEjecucion = proyectos.filter(p => p.estado === 'en_ejecucion')
   const enPlanificacion = proyectos.filter(p => p.estado === 'en_planificacion')
@@ -152,10 +165,12 @@ export default function ListaProyectos() {
 
   function limpiarFiltros() {
     filtrosRef.current = { estado: '', q: '', pm: '', cliente: '', ingeniero: '' }
+    soloMisRef.current = false
     setFiltroEstado('')
     setFiltroPM('')
     setFiltroIngeniero('')
     setFiltroInterno(false)
+    setSoloMisProyectos(false)
     buscar()
   }
 
@@ -173,7 +188,7 @@ export default function ListaProyectos() {
     limpiarFiltros()
   }, [buscar]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const hayFiltros = filtroEstado || filtroPM || filtroIngeniero || filtroInterno
+  const hayFiltros = filtroEstado || filtroPM || filtroIngeniero || filtroInterno || soloMisProyectos
   const filtrados = proyectos.filter(p => !filtroInterno || p.es_interno === 1)
 
   if (cargandoInicial) return (
@@ -254,6 +269,30 @@ export default function ListaProyectos() {
           />
           Solo internos
         </label>
+
+        {/* Toggle Todos / Mis proyectos */}
+        <div className="flex items-center">
+          <button
+            onClick={() => handleSoloMisProyectos(false)}
+            className={`px-3 py-2 text-sm rounded-l-lg border transition-colors ${
+              !soloMisProyectos
+                ? 'bg-[#4E738A] text-white border-[#4E738A]'
+                : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            Todos
+          </button>
+          <button
+            onClick={() => handleSoloMisProyectos(true)}
+            className={`px-3 py-2 text-sm rounded-r-lg border-t border-b border-r transition-colors ${
+              soloMisProyectos
+                ? 'bg-[#4E738A] text-white border-[#4E738A]'
+                : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            Mis proyectos
+          </button>
+        </div>
       </div>
 
       {/* Tabla */}

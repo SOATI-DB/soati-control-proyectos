@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getCalendarioRecursos } from '../../services/api'
 import { formatFecha } from '../../utils/fecha'
 
@@ -56,25 +56,69 @@ function anchoBarra(asig) {
 
 export default function CalendarioRecursos() {
   const hoy = new Date()
-  const [mesOffset, setMesOffset] = useState(0)
-  const [tipo, setTipo] = useState('')
+  const [vista, setVista]               = useState('mes')
+  const [mesOffset, setMesOffset]       = useState(0)
+  const [quincenaIdx, setQuincenaIdx]   = useState(0)
+  const [semanaOffset, setSemanaOffset] = useState(0)
+  const [tipo, setTipo]                 = useState('')
   const [asignaciones, setAsignaciones] = useState([])
-  const [cargando, setCargando] = useState(false)
-  const [tooltip, setTooltip] = useState(null)
+  const [cargando, setCargando]         = useState(false)
+  const [tooltip, setTooltip]           = useState(null)
 
-  const mesBase = new Date(hoy.getFullYear(), hoy.getMonth() + mesOffset, 1)
-  const year = mesBase.getFullYear()
-  const month = mesBase.getMonth()
-  const diasEnMes = new Date(year, month + 1, 0).getDate()
-  const dias = Array.from({ length: diasEnMes }, (_, i) => i + 1)
-  const mesStr = `${year}-${String(month + 1).padStart(2, '0')}`
+  const mesBase  = new Date(hoy.getFullYear(), hoy.getMonth() + mesOffset, 1)
+  const year     = mesBase.getFullYear()
+  const month    = mesBase.getMonth()
+  const mesStr   = `${year}-${String(month + 1).padStart(2, '0')}`
   const mesLabel = mesBase.toLocaleDateString('es-CR', { month: 'long', year: 'numeric' })
 
+  // Calcular rango de días según la vista
+  let dias = []
+  let rangeLabel = ''
+
+  if (vista === 'mes') {
+    const diasEnMes = new Date(year, month + 1, 0).getDate()
+    dias = Array.from({ length: diasEnMes }, (_, i) => ({
+      dia: i + 1,
+      fecha: new Date(year, month, i + 1),
+    }))
+    rangeLabel = mesLabel
+
+  } else if (vista === 'quincena') {
+    const diasEnMes = new Date(year, month + 1, 0).getDate()
+    const inicio = quincenaIdx === 0 ? 1 : 16
+    const fin    = quincenaIdx === 0 ? 15 : diasEnMes
+    dias = Array.from({ length: fin - inicio + 1 }, (_, i) => ({
+      dia: inicio + i,
+      fecha: new Date(year, month, inicio + i),
+    }))
+    rangeLabel = `${quincenaIdx === 0 ? '1ª' : '2ª'} quincena — ${mesLabel}`
+
+  } else if (vista === 'semana') {
+    const lunes = new Date(hoy)
+    lunes.setDate(hoy.getDate() - ((hoy.getDay() + 6) % 7) + semanaOffset * 7)
+    dias = Array.from({ length: 7 }, (_, i) => {
+      const f = new Date(lunes)
+      f.setDate(lunes.getDate() + i)
+      return { dia: f.getDate(), fecha: f }
+    })
+    const domingofin = new Date(lunes)
+    domingofin.setDate(lunes.getDate() + 6)
+    rangeLabel = `${lunes.getDate()}/${lunes.getMonth()+1} — ${domingofin.getDate()}/${domingofin.getMonth()+1}/${domingofin.getFullYear()}`
+  }
+
+  const mesParaCargar = vista === 'semana'
+    ? `${dias[0]?.fecha.getFullYear()}-${String(dias[0]?.fecha.getMonth()+1).padStart(2,'0')}`
+    : mesStr
+
   useEffect(() => {
+    if (dias.length === 0) return
+    const mesActual  = mesParaCargar
+    const mesAnio    = parseInt(mesActual.split('-')[1])
+    const anioActual = parseInt(mesActual.split('-')[0])
     setCargando(true)
     Promise.all([
-      getCalendarioRecursos(mesStr, tipo || undefined).catch(() => []),
-      cargarTareasServicios(month + 1, year).catch(() => []),
+      getCalendarioRecursos(mesActual, tipo || undefined).catch(() => []),
+      cargarTareasServicios(mesAnio, anioActual).catch(() => []),
     ]).then(([recursos, tareas]) => {
       setAsignaciones([
         ...(Array.isArray(recursos) ? recursos : []),
@@ -82,9 +126,9 @@ export default function CalendarioRecursos() {
       ])
       setCargando(false)
     }).catch(() => { setAsignaciones([]); setCargando(false) })
-  }, [mesStr, tipo])
+  }, [mesStr, quincenaIdx, semanaOffset, tipo, vista]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Agrupar por usuario_nombre
+  // Agrupar por usuario
   const usuariosMap = {}
   for (const a of asignaciones) {
     if (!usuariosMap[a.usuario_id]) {
@@ -94,8 +138,9 @@ export default function CalendarioRecursos() {
   }
   const usuarios = Object.values(usuariosMap).sort((a, b) => a.nombre.localeCompare(b.nombre))
 
-  function diaOcupado(asig, dia) {
-    const d = new Date(year, month, dia, 12, 0, 0)
+  function diaOcupado(asig, fechaDia) {
+    const d = new Date(fechaDia)
+    d.setHours(12, 0, 0, 0)
     const fi = new Date(`${String(asig.fecha_inicio).slice(0, 10)}T12:00:00`)
     const ff = new Date(`${String(asig.fecha_fin).slice(0, 10)}T12:00:00`)
     return d >= fi && d <= ff
@@ -105,20 +150,64 @@ export default function CalendarioRecursos() {
     <div>
       {/* Controles */}
       <div className="flex items-center gap-3 mb-4 flex-wrap">
+
+        {/* Navegación */}
         <button
-          onClick={() => setMesOffset(m => m - 1)}
+          onClick={() => {
+            if (vista === 'mes')      setMesOffset(m => m - 1)
+            if (vista === 'quincena') {
+              if (quincenaIdx === 0) { setQuincenaIdx(1); setMesOffset(m => m - 1) }
+              else setQuincenaIdx(0)
+            }
+            if (vista === 'semana')  setSemanaOffset(s => s - 1)
+          }}
           className="px-2 py-1 text-xs border border-gray-200 rounded hover:border-[#4E738A] text-[#4E738A]"
         >
           &lsaquo; Anterior
         </button>
-        <span className="text-sm font-medium text-[#2C3A43] capitalize">{mesLabel}</span>
+
+        <span className="text-sm font-medium text-[#2C3A43] capitalize">{rangeLabel}</span>
+
         <button
-          onClick={() => setMesOffset(m => m + 1)}
+          onClick={() => {
+            if (vista === 'mes')      setMesOffset(m => m + 1)
+            if (vista === 'quincena') {
+              if (quincenaIdx === 1) { setQuincenaIdx(0); setMesOffset(m => m + 1) }
+              else setQuincenaIdx(1)
+            }
+            if (vista === 'semana')  setSemanaOffset(s => s + 1)
+          }}
           className="px-2 py-1 text-xs border border-gray-200 rounded hover:border-[#4E738A] text-[#4E738A]"
         >
           Siguiente &rsaquo;
         </button>
 
+        {/* Selector de vista */}
+        <div className="flex gap-1 border border-gray-200 rounded-lg overflow-hidden">
+          {[
+            { id: 'semana',   label: 'Semana' },
+            { id: 'quincena', label: 'Quincena' },
+            { id: 'mes',      label: 'Mes' },
+          ].map(v => (
+            <button
+              key={v.id}
+              onClick={() => {
+                setVista(v.id)
+                setSemanaOffset(0)
+                setQuincenaIdx(0)
+              }}
+              className={`px-3 py-1 text-xs transition-colors ${
+                vista === v.id
+                  ? 'bg-[#4E738A] text-white'
+                  : 'bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Filtros de tipo */}
         <div className="ml-auto flex gap-1 flex-wrap">
           {TIPOS.map(t => (
             <button
@@ -146,15 +235,23 @@ export default function CalendarioRecursos() {
             Recurso
           </div>
           <div className="flex flex-1 min-w-0">
-            {dias.map(d => {
-              const fecha = new Date(year, month, d)
+            {dias.map(({ dia, fecha }) => {
               const esFinde = fecha.getDay() === 0 || fecha.getDay() === 6
+              const esHoy   = fecha.toDateString() === hoy.toDateString()
               return (
                 <div
-                  key={d}
-                  className={`flex-1 min-w-[28px] text-center text-[10px] py-1.5 border-r border-gray-200 ${esFinde ? 'bg-gray-100 text-gray-400' : 'text-gray-500'}`}
+                  key={dia}
+                  className={`flex-1 text-center text-[10px] py-1.5 border-r border-gray-200 ${
+                    esFinde ? 'bg-gray-100 text-gray-400' :
+                    esHoy   ? 'bg-[#4E738A]/10 text-[#4E738A] font-semibold' :
+                    'text-gray-500'
+                  }`}
+                  style={{ minWidth: vista === 'semana' ? '80px' : vista === 'quincena' ? '48px' : '28px' }}
                 >
-                  {d}
+                  {vista === 'semana'
+                    ? `${['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][fecha.getDay()]} ${dia}`
+                    : dia
+                  }
                 </div>
               )
             })}
@@ -168,29 +265,44 @@ export default function CalendarioRecursos() {
               {u.nombre}
             </div>
             <div className="flex flex-1 min-w-0 relative">
-              {dias.map(d => {
-                const fecha = new Date(year, month, d)
+              {dias.map(({ dia, fecha }) => {
                 const esFinde = fecha.getDay() === 0 || fecha.getDay() === 6
-                const asigs = u.asignaciones.filter(a => diaOcupado(a, d))
+                const asigs   = u.asignaciones.filter(a => diaOcupado(a, fecha))
+                const minW    = vista === 'semana' ? '80px' : vista === 'quincena' ? '48px' : '28px'
                 return (
                   <div
-                    key={d}
-                    className={`flex-1 min-w-[28px] border-r border-gray-100 flex flex-col items-center justify-center gap-px py-0.5 ${esFinde ? 'bg-gray-50' : ''}`}
+                    key={dia}
+                    className={`flex-1 border-r border-gray-100 flex flex-col items-stretch justify-center gap-px py-0.5 ${esFinde ? 'bg-gray-50' : ''}`}
+                    style={{ minWidth: minW }}
                   >
-                    {asigs.map((asig, i) => (
-                      <div
-                        key={i}
-                        className="mx-px rounded-sm cursor-pointer"
-                        style={{
-                          backgroundColor: asig.tipo === 'servicio' ? '#EE7623' : colorProyecto(asig.codigo),
-                          height: '10px',
-                          opacity: asig.tipo === 'servicio' ? 0.85 : 1,
-                          width: anchoBarra(asig),
-                        }}
-                        onMouseEnter={e => setTooltip({ x: e.clientX, y: e.clientY, asig })}
-                        onMouseLeave={() => setTooltip(null)}
-                      />
-                    ))}
+                    {asigs.map((asig, i) => {
+                      const color          = asig.tipo === 'servicio' ? '#EE7623' : colorProyecto(asig.codigo)
+                      const etiqueta       = asig.codigo || ''
+                      const mostrarEtiqueta = vista !== 'mes' && etiqueta
+                      return (
+                        <div
+                          key={i}
+                          className="mx-0.5 rounded-sm cursor-pointer flex items-center overflow-hidden"
+                          style={{
+                            backgroundColor: color,
+                            height: mostrarEtiqueta ? '16px' : '10px',
+                            opacity: asig.tipo === 'servicio' ? 0.85 : 1,
+                            width: anchoBarra(asig),
+                          }}
+                          onMouseEnter={e => setTooltip({ x: e.clientX, y: e.clientY, asig })}
+                          onMouseLeave={() => setTooltip(null)}
+                        >
+                          {mostrarEtiqueta && (
+                            <span
+                              className="text-white font-medium px-1 truncate"
+                              style={{ fontSize: '9px', lineHeight: '16px' }}
+                            >
+                              {etiqueta}
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 )
               })}
@@ -200,7 +312,7 @@ export default function CalendarioRecursos() {
 
         {usuarios.length === 0 && !cargando && (
           <div className="flex items-center justify-center py-12">
-            <p className="text-sm text-gray-400">Sin recursos asignados en este mes</p>
+            <p className="text-sm text-gray-400">Sin recursos asignados en este período</p>
           </div>
         )}
       </div>
