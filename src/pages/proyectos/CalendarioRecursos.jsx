@@ -320,22 +320,24 @@ export default function CalendarioRecursos() {
       {/* Tooltip */}
       {tooltip && (
         <div
-          className="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-xs pointer-events-none"
-          style={{ top: tooltip.y + 12, left: tooltip.x + 12, maxWidth: 220 }}
+          className="fixed z-50 bg-white border border-gray-200 rounded-xl shadow-xl px-4 py-3 text-sm pointer-events-none max-w-xs"
+          style={{ left: Math.min(tooltip.x + 12, window.innerWidth - 280), top: tooltip.y + 12 }}
         >
-          {tooltip.asig.tipo === 'servicio' && (
-            <span className="inline-block mb-1 px-1.5 py-0.5 bg-orange-100 text-orange-700 text-[10px] rounded font-medium">SERVICIO</span>
-          )}
           <p className="font-semibold text-[#2C3A43] mb-1">{tooltip.asig.codigo}</p>
-          <p className="text-gray-500">{tooltip.asig.proyecto_nombre ?? tooltip.asig.titulo}</p>
-          {tooltip.asig.tipo !== 'servicio' && <p className="text-gray-500">Tipo: {tooltip.asig.tipo_recurso}</p>}
-          {tooltip.asig.tipo === 'servicio' && tooltip.asig.hora_inicio && (
-            <p className="text-gray-500">{String(tooltip.asig.hora_inicio).slice(0,5)} — {String(tooltip.asig.hora_fin).slice(0,5)}</p>
+          {tooltip.asig.tarea_nombre && (
+            <p className="text-gray-700 mb-1">
+              <span className="text-gray-400 text-xs">Tarea: </span>
+              {tooltip.asig.tarea_nombre}
+            </p>
           )}
-          {tooltip.asig.tipo !== 'servicio' && <p className="text-gray-500">{formatFecha(tooltip.asig.fecha_inicio)} — {formatFecha(tooltip.asig.fecha_fin)}</p>}
-          {tooltip.asig.tipo !== 'servicio' && tooltip.asig.dedicacion_pct !== 100 && (
-            <p className="text-gray-500">Dedicación: {tooltip.asig.dedicacion_pct}%</p>
-          )}
+          <p className="text-gray-500 text-xs">
+            Tipo: {tooltip.asig.tipo === 'servicio' ? 'Servicio' : 'Ingeniería'}
+          </p>
+          <p className="text-gray-400 text-xs">
+            {String(tooltip.asig.fecha_inicio).slice(0, 10).replace(/-/g, '/')}
+            {' — '}
+            {String(tooltip.asig.fecha_fin).slice(0, 10).replace(/-/g, '/')}
+          </p>
         </div>
       )}
     </div>
