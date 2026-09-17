@@ -150,6 +150,12 @@ export default function CalendarioRecursos() {
           }
           asigBase = [...asigBase, ...asigBase2]
         }
+        const vistos = new Set()
+        asigBase = asigBase.filter(a => {
+          if (vistos.has(a.id)) return false
+          vistos.add(a.id)
+          return true
+        })
         const tareas = await cargarTareasServicios(mesAnio, anioActual).catch(() => [])
         setAsignaciones([
           ...asigBase,
