@@ -111,6 +111,10 @@ export default function CalendarioRecursos() {
     ? `${dias[0]?.fecha.getFullYear()}-${String(dias[0]?.fecha.getMonth()+1).padStart(2,'0')}`
     : mesStr
 
+  const mesParaCargar2 = vista === 'semana' && dias[6]?.fecha.getMonth() !== dias[0]?.fecha.getMonth()
+    ? `${dias[6]?.fecha.getFullYear()}-${String(dias[6]?.fecha.getMonth()+1).padStart(2,'0')}`
+    : null
+
   useEffect(() => {
     if (dias.length === 0) return
     const mesActual  = mesParaCargar
@@ -131,6 +135,21 @@ export default function CalendarioRecursos() {
           asigBase = await getCalendarioRecursos(mesActual, tipo || undefined).catch(() => [])
           if (!Array.isArray(asigBase)) asigBase = []
         }
+        if (mesParaCargar2) {
+          let asigBase2 = []
+          if (tipo === 'tecnicos') {
+            const [ensamble2, campo2] = await Promise.all([
+              getCalendarioRecursos(mesParaCargar2, 'ensamble').catch(() => []),
+              getCalendarioRecursos(mesParaCargar2, 'campo').catch(() => []),
+            ])
+            asigBase2 = [...(Array.isArray(ensamble2) ? ensamble2 : []),
+                         ...(Array.isArray(campo2) ? campo2 : [])]
+          } else {
+            asigBase2 = await getCalendarioRecursos(mesParaCargar2, tipo || undefined).catch(() => [])
+            if (!Array.isArray(asigBase2)) asigBase2 = []
+          }
+          asigBase = [...asigBase, ...asigBase2]
+        }
         const tareas = await cargarTareasServicios(mesAnio, anioActual).catch(() => [])
         setAsignaciones([
           ...asigBase,
@@ -142,7 +161,7 @@ export default function CalendarioRecursos() {
         setCargando(false)
       }
     })()
-  }, [mesStr, quincenaIdx, semanaOffset, tipo, vista]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mesStr, quincenaIdx, semanaOffset, tipo, vista, mesParaCargar2]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Agrupar por usuario
   const usuariosMap = {}
