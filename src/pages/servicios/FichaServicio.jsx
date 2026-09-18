@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth.js'
+import { getRecursosDisponibles } from '../../services/api.js'
 
 const CP_API    = import.meta.env.VITE_API_URL ?? 'http://localhost:3011'
 const TOKEN_KEY = 'soati_shell_token'
@@ -41,10 +42,7 @@ export default function FichaServicio() {
 
   async function cargarUsuarios() {
     try {
-      const r = await fetch(`${CP_API}/api/users/recursos`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` }
-      })
-      const data = await r.json()
+      const data = await getRecursosDisponibles()
       setUsuarios(Array.isArray(data) ? data : [])
     } catch { setUsuarios([]) }
   }
