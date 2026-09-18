@@ -190,7 +190,9 @@ export default function CalendarioRecursos() {
     d.setHours(12, 0, 0, 0)
     const fi = new Date(`${String(asig.fecha_inicio).slice(0, 10)}T12:00:00`)
     const ff = new Date(`${String(asig.fecha_fin).slice(0, 10)}T12:00:00`)
-    return d >= fi && d <= ff
+    if (d < fi || d > ff) return false
+    if (!asig.incluir_fines_semana && (d.getDay() === 0 || d.getDay() === 6)) return false
+    return true
   }
 
   return (
@@ -375,6 +377,12 @@ export default function CalendarioRecursos() {
             <p className="text-gray-700 mb-1">
               <span className="text-gray-400 text-xs">Tarea: </span>
               {tooltip.asig.tarea_nombre}
+            </p>
+          )}
+          {tooltip.asig.tipo !== 'servicio' && tooltip.asig.pm_nombre && (
+            <p className="text-gray-700 mb-1">
+              <span className="text-gray-400 text-xs">PM: </span>
+              {tooltip.asig.pm_nombre}
             </p>
           )}
           <p className="text-gray-500 text-xs">

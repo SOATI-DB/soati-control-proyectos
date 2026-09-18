@@ -17,6 +17,11 @@ export default function FichaServicio() {
   const [loading, setLoading]   = useState(true)
   const [tabActivo, setTabActivo] = useState('general')
 
+  const [modalEditar, setModalEditar]         = useState(false)
+  const [formEditar, setFormEditar]           = useState({})
+  const [guardandoEditar, setGuardandoEditar] = useState(false)
+  const [errorEditar, setErrorEditar]         = useState('')
+
   const [modalTarea, setModalTarea] = useState(false)
   const [formTarea, setFormTarea]   = useState({
     titulo: '', descripcion: '', asignado_id: '', asignado_nombre: '',
@@ -45,6 +50,56 @@ export default function FichaServicio() {
       const data = await getRecursosDisponibles()
       setUsuarios(Array.isArray(data) ? data : [])
     } catch { setUsuarios([]) }
+  }
+
+  function abrirEditar() {
+    setFormEditar({
+      nombre:              contrato.nombre              ?? '',
+      cliente_nombre:      contrato.cliente_nombre      ?? '',
+      cliente_codigo:      contrato.cliente_codigo      ?? '',
+      tipo:                contrato.tipo                ?? '',
+      modalidad:           contrato.modalidad           ?? '',
+      periodo:             contrato.periodo             ?? 'unico',
+      cantidad_contratada: contrato.cantidad_contratada ?? '',
+      cantidad_disponible: contrato.cantidad_disponible ?? '',
+      fecha_inicio:        contrato.fecha_inicio        ?? '',
+      fecha_fin:           contrato.fecha_fin           ?? '',
+      estado:              contrato.estado              ?? 'activo',
+      notas:               contrato.notas               ?? '',
+    })
+    setErrorEditar('')
+    setModalEditar(true)
+  }
+
+  async function guardarEdicion() {
+    if (!formEditar.nombre || !formEditar.cliente_nombre || !formEditar.cliente_codigo || !formEditar.tipo) {
+      setErrorEditar('Nombre, cliente y tipo son requeridos')
+      return
+    }
+    setGuardandoEditar(true)
+    setErrorEditar('')
+    try {
+      const r = await fetch(`${CP_API}/api/servicios/contratos/${codigo}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}`
+        },
+        body: JSON.stringify({
+          ...formEditar,
+          cantidad_contratada: formEditar.cantidad_contratada !== '' ? parseFloat(formEditar.cantidad_contratada) : null,
+          cantidad_disponible: formEditar.cantidad_disponible !== '' ? parseFloat(formEditar.cantidad_disponible) : null,
+          fecha_inicio: formEditar.fecha_inicio || null,
+          fecha_fin:    formEditar.fecha_fin    || null,
+          modalidad:    formEditar.modalidad    || null,
+        })
+      })
+      const data = await r.json()
+      if (!r.ok) { setErrorEditar(data.error ?? 'Error al guardar'); return }
+      setModalEditar(false)
+      cargar()
+    } catch { setErrorEditar('Error de conexión') }
+    finally { setGuardandoEditar(false) }
   }
 
   async function guardarTarea() {
@@ -100,12 +155,22 @@ export default function FichaServicio() {
             <h1 className="text-xl font-semibold text-[#2C3A43]">{contrato.nombre}</h1>
             <p className="text-sm text-[#9aa1a9] font-mono mt-0.5">{contrato.codigo}</p>
           </div>
-          <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-            contrato.estado === 'activo'  ? 'bg-green-100 text-green-700' :
-            contrato.estado === 'vencido' ? 'bg-orange-100 text-orange-700' :
-            contrato.estado === 'cerrado' ? 'bg-gray-100 text-gray-600' :
-                                            'bg-yellow-100 text-yellow-700'
-          }`}>{contrato.estado}</span>
+          <div className="flex items-center gap-2">
+            {puedeGestionar && (
+              <button
+                onClick={abrirEditar}
+                className="px-3 py-1.5 border border-[#4E738A] text-[#4E738A] text-sm rounded-lg hover:bg-[#4E738A] hover:text-white transition-colors"
+              >
+                Editar
+              </button>
+            )}
+            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+              contrato.estado === 'activo'  ? 'bg-green-100 text-green-700' :
+              contrato.estado === 'vencido' ? 'bg-orange-100 text-orange-700' :
+              contrato.estado === 'cerrado' ? 'bg-gray-100 text-gray-600' :
+                                              'bg-yellow-100 text-yellow-700'
+            }`}>{contrato.estado}</span>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4 text-sm">
@@ -253,6 +318,131 @@ export default function FichaServicio() {
           )}
         </div>
       </div>
+
+      {modalEditar && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-lg font-semibold text-[#2C3A43] mb-4">Editar contrato</h2>
+
+            {errorEditar && <p className="text-red-500 text-sm mb-3">{errorEditar}</p>}
+
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm text-[#5f6b75]">Nombre *</label>
+                  <input value={formEditar.nombre ?? ''} onChange={e => setFormEditar(f => ({ ...f, nombre: e.target.value }))}
+                    className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-sm text-[#5f6b75]">Cliente nombre *</label>
+                  <input value={formEditar.cliente_nombre ?? ''} onChange={e => setFormEditar(f => ({ ...f, cliente_nombre: e.target.value }))}
+                    className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm text-[#5f6b75]">Código cliente</label>
+                  <input value={formEditar.cliente_codigo ?? ''} onChange={e => setFormEditar(f => ({ ...f, cliente_codigo: e.target.value }))}
+                    className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-sm text-[#5f6b75]">Tipo *</label>
+                  <select value={formEditar.tipo ?? ''} onChange={e => setFormEditar(f => ({ ...f, tipo: e.target.value }))}
+                    className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm">
+                    <option value="">Seleccionar</option>
+                    <option value="contrato_horas">Contrato horas</option>
+                    <option value="contrato_visitas">Contrato visitas</option>
+                    <option value="soporte">Soporte</option>
+                    <option value="proyecto">Proyecto</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm text-[#5f6b75]">Modalidad</label>
+                  <select value={formEditar.modalidad ?? ''} onChange={e => setFormEditar(f => ({ ...f, modalidad: e.target.value }))}
+                    className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm">
+                    <option value="">Ninguna</option>
+                    <option value="bloque">Bloque</option>
+                    <option value="mensual">Mensual</option>
+                    <option value="bajo_demanda">Bajo demanda</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-sm text-[#5f6b75]">Periodo</label>
+                  <select value={formEditar.periodo ?? 'unico'} onChange={e => setFormEditar(f => ({ ...f, periodo: e.target.value }))}
+                    className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm">
+                    <option value="unico">Único</option>
+                    <option value="mensual">Mensual</option>
+                    <option value="trimestral">Trimestral</option>
+                    <option value="anual">Anual</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm text-[#5f6b75]">Cantidad contratada</label>
+                  <input type="number" min="0" step="0.5" value={formEditar.cantidad_contratada ?? ''}
+                    onChange={e => setFormEditar(f => ({ ...f, cantidad_contratada: e.target.value }))}
+                    className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-sm text-[#5f6b75]">Cantidad disponible</label>
+                  <input type="number" min="0" step="0.5" value={formEditar.cantidad_disponible ?? ''}
+                    onChange={e => setFormEditar(f => ({ ...f, cantidad_disponible: e.target.value }))}
+                    className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm text-[#5f6b75]">Fecha inicio</label>
+                  <input type="date" value={formEditar.fecha_inicio ?? ''} onChange={e => setFormEditar(f => ({ ...f, fecha_inicio: e.target.value }))}
+                    className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-sm text-[#5f6b75]">Fecha fin</label>
+                  <input type="date" value={formEditar.fecha_fin ?? ''} onChange={e => setFormEditar(f => ({ ...f, fecha_fin: e.target.value }))}
+                    className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm" />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm text-[#5f6b75]">Estado</label>
+                <select value={formEditar.estado ?? 'activo'} onChange={e => setFormEditar(f => ({ ...f, estado: e.target.value }))}
+                  className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm">
+                  <option value="activo">Activo</option>
+                  <option value="suspendido">Suspendido</option>
+                  <option value="vencido">Vencido</option>
+                  <option value="cerrado">Cerrado</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-sm text-[#5f6b75]">Notas</label>
+                <textarea value={formEditar.notas ?? ''} onChange={e => setFormEditar(f => ({ ...f, notas: e.target.value }))}
+                  rows={2} className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm resize-none" />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-5">
+              <button onClick={() => setModalEditar(false)} className="px-4 py-2 text-sm text-[#5f6b75] hover:text-[#2C3A43]">
+                Cancelar
+              </button>
+              <button
+                onClick={guardarEdicion}
+                disabled={guardandoEditar}
+                className="px-4 py-2 bg-[#4E738A] text-white text-sm rounded-lg hover:bg-[#3a5a6e] disabled:opacity-50"
+              >
+                {guardandoEditar ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {modalTarea && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">

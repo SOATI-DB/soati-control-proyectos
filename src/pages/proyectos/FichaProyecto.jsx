@@ -77,6 +77,7 @@ export default function FichaProyecto() {
 
   const [duracionUnidad, setDuracionUnidad] = useState('dias')
   const [duracionValor, setDuracionValor] = useState('')
+  const [incluirFinesTarea, setIncluirFinesTarea] = useState(false)
 
   // Edición inline de recursos
   const [editandoRecurso, setEditandoRecurso] = useState(null)
@@ -111,6 +112,21 @@ export default function FichaProyecto() {
     getComercialesCP().then(setComerciales).catch(() => {})
     getRecursosDisponibles().then(data => setRecursosDisponibles(Array.isArray(data) ? data : []))
   }, [id])
+
+  function calcularFechaFin(fechaInicio, nDias, incluirFines) {
+    const fin = new Date(`${fechaInicio}T12:00:00`)
+    if (incluirFines) {
+      fin.setDate(fin.getDate() + Math.max(1, Math.ceil(nDias)) - 1)
+    } else {
+      let diasRestantes = Math.max(1, Math.ceil(nDias)) - 1
+      while (diasRestantes > 0) {
+        fin.setDate(fin.getDate() + 1)
+        const dow = fin.getDay()
+        if (dow !== 0 && dow !== 6) diasRestantes--
+      }
+    }
+    return fin.toISOString().split('T')[0]
+  }
 
   async function verificarRecurso(form) {
     const { tipo_recurso, recurso_id, fecha_inicio_recurso, fecha_fin_recurso } = form
@@ -1036,9 +1052,8 @@ export default function FichaProyecto() {
                           const v = e.target.value
                           setDuracionValor(v)
                           if (duracionUnidad === 'dias' && v && modalForm.fecha_inicio) {
-                            const fin = new Date(modalForm.fecha_inicio)
-                            fin.setDate(fin.getDate() + Math.max(1, Math.ceil(parseFloat(v))) - 1)
-                            setModalForm(f => ({ ...f, fecha_limite: fin.toISOString().split('T')[0] }))
+                            const fechaFin = calcularFechaFin(modalForm.fecha_inicio, parseFloat(v), incluirFinesTarea)
+                            setModalForm(f => ({ ...f, fecha_limite: fechaFin }))
                           }
                         }}
                         className={`${inp()} flex-1`}
@@ -1052,9 +1067,26 @@ export default function FichaProyecto() {
                         <option value="horas">Horas</option>
                       </select>
                     </div>
-                    <p className="text-[10px] text-gray-400 mt-0.5">
-                      {duracionUnidad === 'horas' ? 'Horas de trabajo (1 jornada = 9.5 h)' : 'Días hábiles desde la fecha de inicio'}
-                    </p>
+                      {duracionUnidad === 'dias' && (
+                        <label className="flex items-center gap-1.5 mt-1 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={incluirFinesTarea}
+                            onChange={e => {
+                              setIncluirFinesTarea(e.target.checked)
+                              if (duracionValor && modalForm.fecha_inicio) {
+                                const fechaFin = calcularFechaFin(modalForm.fecha_inicio, parseFloat(duracionValor), e.target.checked)
+                                setModalForm(f => ({ ...f, fecha_limite: fechaFin }))
+                              }
+                            }}
+                            className="w-3 h-3 accent-[#4E738A]"
+                          />
+                          <span className="text-[10px] text-gray-400">Incluir fines de semana</span>
+                        </label>
+                      )}
+                      <p className="text-[10px] text-gray-400 mt-0.5">
+                        {duracionUnidad === 'horas' ? 'Horas de trabajo (1 jornada = 9.5 h)' : 'Días desde la fecha de inicio'}
+                      </p>
                   </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Tareas predecesoras</label>
@@ -1226,6 +1258,15 @@ export default function FichaProyecto() {
                             onChange={e => { const v = e.target.value; setSubFormData(f => ({ ...f, fecha_fin: v })); verificarSubForm({ ...subFormData, fecha_fin: v }) }}
                             className={inp()} /></div>
                       </div>
+                      <label className="flex items-center gap-1.5 mt-1 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={!!subFormData.incluir_fines_semana}
+                          onChange={e => setSubFormData(f => ({ ...f, incluir_fines_semana: e.target.checked ? 1 : 0 }))}
+                          className="w-3 h-3 accent-[#4E738A]"
+                        />
+                        <span className="text-[10px] text-gray-400">Incluir fines de semana</span>
+                      </label>
 
                       <div><label className="block text-xs text-gray-500 mb-1">% Dedicación</label>
                         <input type="number" min="1" max="100" value={subFormData.dedicacion_pct || 100}
