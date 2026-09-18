@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth.js'
 
-const CP_API = import.meta.env.VITE_API_URL ?? 'http://localhost:3011'
+const CP_API    = import.meta.env.VITE_API_URL ?? 'http://localhost:3011'
+const TOKEN_KEY = 'soati_shell_token'
 
 const TIPO_LABEL = {
   contrato_horas:   'Horas',
@@ -11,7 +12,7 @@ const TIPO_LABEL = {
 }
 
 export default function ListaServicios() {
-  const { token, tienePermiso, esAdmin } = useAuth()
+  const { tienePermiso, esAdmin } = useAuth()
   const navigate = useNavigate()
   const puedeGestionar = esAdmin || tienePermiso('control-proyectos', 'gestionar_servicios')
 
@@ -28,7 +29,7 @@ export default function ListaServicios() {
         Object.fromEntries(Object.entries(filtros).filter(([, v]) => v))
       )
       const r = await fetch(`${CP_API}/api/servicios/contratos?${params}`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` }
       })
       const data = await r.json()
       setContratos(Array.isArray(data) ? data : [])
