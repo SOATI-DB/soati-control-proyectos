@@ -258,6 +258,21 @@ export default function FichaServicio() {
                     <div key={t.id} className="flex items-start gap-3 p-3 border border-[#E8EAEC] rounded-lg">
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-[#2C3A43] text-sm">{t.titulo}</p>
+                        {t.zammad_ticket_id && (
+                          <a
+                            href={`${import.meta.env.VITE_TICKETS_URL ?? '/tickets'}/tickets/${t.zammad_ticket_id}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            className="ml-2 inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-[#4E738A]/10 text-[#4E738A] hover:bg-[#4E738A]/20 transition-colors"
+                          >
+                            <svg viewBox="0 0 24 24" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                            </svg>
+                            #{t.zammad_ticket_id}
+                          </a>
+                        )}
                         {t.asignado_nombre && <p className="text-xs text-[#9aa1a9] mt-0.5">{t.asignado_nombre}</p>}
                         {t.fecha && (
                           <p className="text-xs text-[#9aa1a9] mt-0.5">
