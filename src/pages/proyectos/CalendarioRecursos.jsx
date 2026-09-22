@@ -35,14 +35,16 @@ async function cargarTareasServicios(mes, anio) {
     const tareas = await r.json()
     return tareas.map(t => ({
       ...t,
-      tipo:           'servicio',
-      usuario_id:     t.asignado_id ?? '_sin_asignar',
-      usuario_nombre: t.asignado_nombre ?? 'Sin asignar',
-      fecha_inicio:   t.fecha,
-      fecha_fin:      t.fecha,
-      codigo:         t.contrato_codigo,
-      tipo_recurso:   'servicio',
-      dedicacion_pct: 100,
+      tipo:              'servicio',
+      usuario_id:        t.asignado_id ?? '_sin_asignar',
+      usuario_nombre:    t.asignado_nombre ?? 'Sin asignar',
+      fecha_inicio:      t.fecha,
+      fecha_fin:         t.fecha,
+      codigo:            t.contrato_codigo,
+      tipo_recurso:      'servicio',
+      dedicacion_pct:    100,
+      tarea_nombre:      t.titulo,
+      tarea_descripcion: t.descripcion ?? '',
     }))
   } catch { return [] }
 }
@@ -416,6 +418,9 @@ export default function CalendarioRecursos() {
             <p className="text-red-600 text-xs font-medium mb-1">
               🔒 Fecha límite fija
             </p>
+          )}
+          {tooltip.asig.tipo === 'servicio' && tooltip.asig.tarea_descripcion && (
+            <p className="text-gray-600 text-xs mb-1">{tooltip.asig.tarea_descripcion}</p>
           )}
           {tooltip.asig.tipo !== 'servicio' && tooltip.asig.pm_nombre && (
             <p className="text-gray-700 mb-1">
