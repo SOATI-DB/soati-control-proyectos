@@ -22,8 +22,11 @@ export default function FichaServicio() {
   const [guardandoEditar, setGuardandoEditar] = useState(false)
   const [errorEditar, setErrorEditar]         = useState('')
 
-  const [modalTarea, setModalTarea] = useState(false)
-  const [formTarea, setFormTarea]   = useState({
+  const [modalTarea, setModalTarea]             = useState(false)
+  const [modalEditarTarea, setModalEditarTarea] = useState(null)
+  const [formEditarTarea, setFormEditarTarea]   = useState({ titulo: '', fecha: '' })
+  const [guardandoEditarTarea, setGuardandoEditarTarea] = useState(false)
+  const [formTarea, setFormTarea]               = useState({
     titulo: '', descripcion: '', asignado_id: '', asignado_nombre: '',
     fecha: '', hora_inicio: '', hora_fin: ''
   })
@@ -133,6 +136,32 @@ export default function FichaServicio() {
       })
       cargar()
     } catch (e) { console.error(e) }
+  }
+
+  async function abrirEditarTarea(t) {
+    setFormEditarTarea({ titulo: t.titulo, fecha: t.fecha ?? '' })
+    setModalEditarTarea(t)
+  }
+
+  async function guardarEditarTarea() {
+    if (!formEditarTarea.titulo.trim()) return
+    setGuardandoEditarTarea(true)
+    try {
+      const r = await fetch(`${CP_API}/api/servicios/tareas/${modalEditarTarea.id}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
+        body:    JSON.stringify({
+          titulo: formEditarTarea.titulo.trim(),
+          fecha:  formEditarTarea.fecha || null,
+        }),
+      })
+      if (r.ok) {
+        setModalEditarTarea(null)
+        await cargar()
+      }
+    } finally {
+      setGuardandoEditarTarea(false)
+    }
   }
 
   if (loading) return <div className="text-center text-[#9aa1a9] py-12">Cargando...</div>
@@ -267,7 +296,17 @@ export default function FichaServicio() {
                   {tareas.map(t => (
                     <div key={t.id} className="flex items-start gap-3 p-3 border border-[#E8EAEC] rounded-lg">
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-[#2C3A43] text-sm">{t.titulo}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-[#2C3A43] text-sm">{t.titulo}</p>
+                          {puedeGestionar && (
+                            <button
+                              onClick={() => abrirEditarTarea(t)}
+                              className="text-[10px] text-[#4E738A] hover:underline shrink-0"
+                            >
+                              Editar
+                            </button>
+                          )}
+                        </div>
                         {t.zammad_ticket_id && (
                           <a
                             href={`${import.meta.env.VITE_TICKETS_URL ?? '/tickets'}/tickets/${t.zammad_ticket_id}`}
@@ -564,6 +603,50 @@ export default function FichaServicio() {
             <div className="flex justify-end gap-2 mt-5">
               <button onClick={() => setModalTarea(false)} className="px-4 py-2 text-sm text-[#5f6b75] hover:text-[#2C3A43]">Cancelar</button>
               <button onClick={guardarTarea} className="px-4 py-2 bg-[#4E738A] text-white text-sm rounded-lg hover:bg-[#3a5a6e]">Guardar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal edición de tarea */}
+      {modalEditarTarea && (
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+            <h3 className="font-semibold text-[#2C3A43]">Editar tarea</h3>
+
+            <div>
+              <label className="text-sm text-[#5f6b75]">Título *</label>
+              <input
+                value={formEditarTarea.titulo}
+                onChange={e => setFormEditarTarea(f => ({ ...f, titulo: e.target.value }))}
+                className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm text-[#5f6b75]">Fecha</label>
+              <input
+                type="date"
+                value={formEditarTarea.fecha}
+                onChange={e => setFormEditarTarea(f => ({ ...f, fecha: e.target.value }))}
+                className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setModalEditarTarea(null)}
+                className="px-4 py-2 text-sm text-[#5f6b75] hover:text-[#2C3A43]"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={guardarEditarTarea}
+                disabled={guardandoEditarTarea || !formEditarTarea.titulo.trim()}
+                className="px-4 py-2 bg-[#4E738A] text-white text-sm rounded-lg hover:bg-[#3a5a6e] disabled:opacity-50"
+              >
+                {guardandoEditarTarea ? 'Guardando...' : 'Guardar'}
+              </button>
             </div>
           </div>
         </div>
