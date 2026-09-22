@@ -345,7 +345,6 @@ export default function CalendarioRecursos() {
                         ? colorAlerta
                         : asig.tipo === 'servicio' ? '#EE7623' : colorProyecto(asig.codigo)
                       // Texto rojo en etiqueta si prioridad alta (independiente del color de barra)
-                      const colorTexto       = esPrioridadAlta ? '#dc2626' : '#ffffff'
                       const fechaLimite      = asig.fecha_limite ? new Date(asig.fecha_limite) : null
                       const diasRestantes    = fechaLimite ? Math.ceil((fechaLimite - hoy) / 86400000) : null
                       const esSlaUrgente     = diasRestantes !== null && diasRestantes <= 3 && diasRestantes >= 0
@@ -372,7 +371,7 @@ export default function CalendarioRecursos() {
                           {mostrarEtiqueta && (
                             <span
                               className="font-medium px-1 truncate"
-                              style={{ fontSize: '9px', lineHeight: '16px', color: colorTexto }}
+                              style={{ fontSize: '9px', lineHeight: '16px', color: '#ffffff' }}
                             >
                               {etiqueta}
                             </span>
