@@ -14,15 +14,15 @@ const TIPOS = [
   { id: 'tecnicos',   label: 'Técnicos' },  // agrupa ensamble + campo
 ]
 
-const COLORES = [
-  '#4E738A', '#2C7A7B', '#6B5B95', '#88B04B',
-  '#F7CAC9', '#92A8D1', '#955251', '#B5838D'
-]
-
+// Color único por proyecto generado desde su código — sin límite de proyectos
+// Excluye hue 0–15 y 345–360 (rojos) reservados para alertas
 function colorProyecto(codigo) {
   let hash = 0
-  for (const c of (codigo || '')) hash = (hash * 31 + c.charCodeAt(0)) % COLORES.length
-  return COLORES[hash]
+  for (const c of (codigo || '')) hash = (hash * 31 + c.charCodeAt(0)) >>> 0
+  const hue = 16 + (hash % 329)       // 16–344: excluye rojos
+  const sat = 45 + ((hash >> 8) % 30) // 45–74%
+  const lit = 35 + ((hash >> 16) % 20) // 35–54%
+  return `hsl(${hue}, ${sat}%, ${lit}%)`
 }
 
 async function cargarTareasServicios(mes, anio) {
@@ -158,6 +158,15 @@ export default function CalendarioRecursos() {
           vistos.add(a.id)
           return true
         })
+        asigBase = asigBase.map(asig => ({
+          ...asig,
+          prioridad:              asig.tarea_prioridad        ?? asig.prioridad        ?? null,
+          fecha_limite:           asig.tarea_fecha_limite      ?? asig.fecha_limite      ?? null,
+          fecha_limite_fija:      asig.tarea_fecha_limite_fija ?? asig.fecha_limite_fija ?? false,
+          ingeniero_cargo_nombre: asig.ingeniero_cargo_nombre  ?? null,
+          proyecto_id:            asig.proyecto_id             ?? null,
+          tarea_id:               asig.tarea_id               ?? null,
+        }))
         const tareas = await cargarTareasServicios(mesAnio, anioActual).catch(() => [])
         setAsignaciones([
           ...asigBase,
@@ -327,16 +336,19 @@ export default function CalendarioRecursos() {
                     style={{ minWidth: minW }}
                   >
                     {asigs.map((asig, i) => {
-                      const hoy            = new Date(); hoy.setHours(0,0,0,0)
-                      const fechaLimite     = asig.fecha_limite ? new Date(asig.fecha_limite) : null
-                      const diasRestantes   = fechaLimite ? Math.ceil((fechaLimite - hoy) / 86400000) : null
-                      const esSlaUrgente    = diasRestantes !== null && diasRestantes <= 3 && diasRestantes >= 0
-                      const esPrioridadAlta = asig.prioridad === 'alta' || asig.prioridad === 'critica'
-                      const esFechaFija     = !!asig.fecha_limite_fija
-                      const colorAlerta     = '#dc2626'
-                      const color           = (esSlaUrgente || esPrioridadAlta || esFechaFija)
+                      const hoy             = new Date(); hoy.setHours(0,0,0,0)
+                      const esFechaFija      = !!asig.fecha_limite_fija
+                      const esPrioridadAlta  = asig.prioridad === 'alta' || asig.prioridad === 'critica'
+                      const colorAlerta      = '#dc2626'
+                      // Barra roja solo por fecha fija — NO por prioridad ni SLA
+                      const color            = esFechaFija
                         ? colorAlerta
                         : asig.tipo === 'servicio' ? '#EE7623' : colorProyecto(asig.codigo)
+                      // Texto rojo en etiqueta si prioridad alta (independiente del color de barra)
+                      const colorTexto       = esPrioridadAlta ? '#dc2626' : '#ffffff'
+                      const fechaLimite      = asig.fecha_limite ? new Date(asig.fecha_limite) : null
+                      const diasRestantes    = fechaLimite ? Math.ceil((fechaLimite - hoy) / 86400000) : null
+                      const esSlaUrgente     = diasRestantes !== null && diasRestantes <= 3 && diasRestantes >= 0
                       const etiqueta        = asig.codigo || ''
                       const mostrarEtiqueta = vista !== 'mes' && etiqueta
                       return (
@@ -359,8 +371,8 @@ export default function CalendarioRecursos() {
                         >
                           {mostrarEtiqueta && (
                             <span
-                              className="text-white font-medium px-1 truncate"
-                              style={{ fontSize: '9px', lineHeight: '16px' }}
+                              className="font-medium px-1 truncate"
+                              style={{ fontSize: '9px', lineHeight: '16px', color: colorTexto }}
                             >
                               {etiqueta}
                             </span>
