@@ -57,11 +57,12 @@ export default function FichaServicio() {
       nombre:              contrato.nombre              ?? '',
       cliente_nombre:      contrato.cliente_nombre      ?? '',
       cliente_codigo:      contrato.cliente_codigo      ?? '',
-      tipo:                contrato.tipo                ?? '',
-      modalidad:           contrato.modalidad           ?? '',
-      periodo:             contrato.periodo             ?? 'unico',
-      cantidad_contratada: contrato.cantidad_contratada ?? '',
-      cantidad_disponible: contrato.cantidad_disponible ?? '',
+      tipo:                    contrato.tipo                    ?? '',
+      modalidad:               contrato.modalidad               ?? '',
+      periodo:                 contrato.periodo                 ?? 'unico',
+      cantidad_contratada:     contrato.cantidad_contratada     ?? '',
+      cantidad_disponible:     contrato.cantidad_disponible     ?? '',
+      cantidad_demanda_limite: contrato.cantidad_demanda_limite ?? '',
       fecha_inicio:        contrato.fecha_inicio        ?? '',
       fecha_fin:           contrato.fecha_fin           ?? '',
       estado:              contrato.estado              ?? 'activo',
@@ -87,8 +88,9 @@ export default function FichaServicio() {
         },
         body: JSON.stringify({
           ...formEditar,
-          cantidad_contratada: formEditar.cantidad_contratada !== '' ? parseFloat(formEditar.cantidad_contratada) : null,
-          cantidad_disponible: formEditar.cantidad_disponible !== '' ? parseFloat(formEditar.cantidad_disponible) : null,
+          cantidad_contratada:     formEditar.cantidad_contratada     !== '' ? parseFloat(formEditar.cantidad_contratada)     : null,
+          cantidad_disponible:     formEditar.cantidad_disponible     !== '' ? parseFloat(formEditar.cantidad_disponible)     : null,
+          cantidad_demanda_limite: formEditar.cantidad_demanda_limite !== '' ? parseFloat(formEditar.cantidad_demanda_limite) : null,
           fecha_inicio: formEditar.fecha_inicio || null,
           fecha_fin:    formEditar.fecha_fin    || null,
           modalidad:    formEditar.modalidad    || null,
@@ -200,7 +202,15 @@ export default function FichaServicio() {
           </div>
         )}
 
-        {contrato.modalidad === 'bajo_demanda' && (
+        {(contrato.modalidad === 'bajo_demanda' || contrato.modalidad === 'mixto') && contrato.cantidad_demanda_limite && (
+          <div>
+            <span className="text-[#9aa1a9]">Límite bajo demanda</span>
+            <p className="text-[#2C3A43] font-medium mt-0.5">
+              {contrato.cantidad_demanda_limite} {contrato.tipo === 'contrato_visitas' ? 'visitas' : 'h'}
+            </p>
+          </div>
+        )}
+        {(contrato.modalidad === 'bajo_demanda' || contrato.modalidad === 'mixto') && (
           <div className="mt-4 p-3 bg-[#F4F5F6] rounded-lg text-sm text-[#5f6b75]">
             Contrato bajo demanda — <strong className="text-[#2C3A43]">{contrato.total_consumido ?? 0}h</strong> consumidas hasta la fecha
           </div>
@@ -379,10 +389,20 @@ export default function FichaServicio() {
                   <label className="text-sm text-[#5f6b75]">Modalidad</label>
                   <select value={formEditar.modalidad ?? ''} onChange={e => setFormEditar(f => ({ ...f, modalidad: e.target.value }))}
                     className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm">
-                    <option value="">Ninguna</option>
-                    <option value="bloque">Bloque</option>
-                    <option value="mensual">Mensual</option>
-                    <option value="bajo_demanda">Bajo demanda</option>
+                    <option value="">Sin modalidad</option>
+                    {formEditar.tipo === 'contrato_horas' ? (
+                      <>
+                        <option value="prepago">Horas contratadas (prepago)</option>
+                        <option value="bajo_demanda">Bajo demanda</option>
+                        <option value="mixto">Mixto (contratadas + bajo demanda)</option>
+                      </>
+                    ) : formEditar.tipo === 'contrato_visitas' ? (
+                      <>
+                        <option value="contratado">Visitas contratadas</option>
+                        <option value="bajo_demanda">Bajo demanda</option>
+                        <option value="mixto">Mixto (contratadas + bajo demanda)</option>
+                      </>
+                    ) : null}
                   </select>
                 </div>
                 <div>
@@ -391,7 +411,10 @@ export default function FichaServicio() {
                     className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm">
                     <option value="unico">Único</option>
                     <option value="mensual">Mensual</option>
+                    <option value="bimensual">Bimensual</option>
                     <option value="trimestral">Trimestral</option>
+                    <option value="cuatrimestral">Cuatrimestral</option>
+                    <option value="semestral">Semestral</option>
                     <option value="anual">Anual</option>
                   </select>
                 </div>
@@ -411,6 +434,19 @@ export default function FichaServicio() {
                     className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm" />
                 </div>
               </div>
+
+              {(formEditar.modalidad === 'bajo_demanda' || formEditar.modalidad === 'mixto') && (
+                <div>
+                  <label className="text-sm text-[#5f6b75]">
+                    Límite bajo demanda <span className="text-[#9aa1a9]">(opcional)</span>
+                  </label>
+                  <input type="number" min="0" step="0.5"
+                    value={formEditar.cantidad_demanda_limite ?? ''}
+                    onChange={e => setFormEditar(f => ({ ...f, cantidad_demanda_limite: e.target.value }))}
+                    placeholder="Sin límite"
+                    className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm" />
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>

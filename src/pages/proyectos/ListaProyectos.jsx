@@ -118,7 +118,7 @@ export default function ListaProyectos() {
       if (f.pm)        params.pm_id              = f.pm
       if (f.cliente)   params.cliente            = f.cliente
       if (f.ingeniero) params.ingeniero_cargo_id = f.ingeniero
-      if (soloMisRef.current && userIdRef.current) params.pm_id = userIdRef.current
+      if (soloMisRef.current) params.mis_proyectos = '1'
       const data = await getProyectos(params)
       setProyectos(Array.isArray(data) ? data : [])
     } catch {

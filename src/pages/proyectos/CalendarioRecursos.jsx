@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { getCalendarioRecursos } from '../../services/api'
 import { formatFecha } from '../../utils/fecha'
 
@@ -56,6 +57,7 @@ function anchoBarra(asig) {
 }
 
 export default function CalendarioRecursos() {
+  const navigate = useNavigate()
   const hoy = new Date()
   const [vista, setVista]               = useState('mes')
   const [mesOffset, setMesOffset]       = useState(0)
@@ -325,8 +327,17 @@ export default function CalendarioRecursos() {
                     style={{ minWidth: minW }}
                   >
                     {asigs.map((asig, i) => {
-                      const color          = asig.tipo === 'servicio' ? '#EE7623' : colorProyecto(asig.codigo)
-                      const etiqueta       = asig.codigo || ''
+                      const hoy            = new Date(); hoy.setHours(0,0,0,0)
+                      const fechaLimite     = asig.fecha_limite ? new Date(asig.fecha_limite) : null
+                      const diasRestantes   = fechaLimite ? Math.ceil((fechaLimite - hoy) / 86400000) : null
+                      const esSlaUrgente    = diasRestantes !== null && diasRestantes <= 3 && diasRestantes >= 0
+                      const esPrioridadAlta = asig.prioridad === 'alta' || asig.prioridad === 'critica'
+                      const esFechaFija     = !!asig.fecha_limite_fija
+                      const colorAlerta     = '#dc2626'
+                      const color           = (esSlaUrgente || esPrioridadAlta || esFechaFija)
+                        ? colorAlerta
+                        : asig.tipo === 'servicio' ? '#EE7623' : colorProyecto(asig.codigo)
+                      const etiqueta        = asig.codigo || ''
                       const mostrarEtiqueta = vista !== 'mes' && etiqueta
                       return (
                         <div
@@ -338,8 +349,13 @@ export default function CalendarioRecursos() {
                             opacity: asig.tipo === 'servicio' ? 0.85 : 1,
                             width: anchoBarra(asig),
                           }}
-                          onMouseEnter={e => setTooltip({ x: e.clientX, y: e.clientY, asig })}
+                          onMouseEnter={e => setTooltip({ x: e.clientX, y: e.clientY, asig, esSlaUrgente, esPrioridadAlta, esFechaFija, diasRestantes })}
                           onMouseLeave={() => setTooltip(null)}
+                          onClick={() => {
+                            if (asig.proyecto_id) {
+                              navigate(`/proyectos/${asig.proyecto_id}?tarea=${asig.tarea_id}`)
+                            }
+                          }}
                         >
                           {mostrarEtiqueta && (
                             <span
@@ -374,15 +390,32 @@ export default function CalendarioRecursos() {
         >
           <p className="font-semibold text-[#2C3A43] mb-1">{tooltip.asig.codigo}</p>
           {tooltip.asig.tarea_nombre && (
-            <p className="text-gray-700 mb-1">
-              <span className="text-gray-400 text-xs">Tarea: </span>
+            <p className={`mb-1 ${tooltip.esPrioridadAlta ? 'text-red-600 font-medium' : 'text-gray-700'}`}>
+              <span className="text-gray-400 text-xs font-normal">Tarea: </span>
               {tooltip.asig.tarea_nombre}
+              {tooltip.esPrioridadAlta && <span className="ml-1 text-xs">🔴 Alta prioridad</span>}
+            </p>
+          )}
+          {tooltip.esSlaUrgente && (
+            <p className="text-red-600 text-xs font-medium mb-1">
+              ⚠️ SLA vence en {tooltip.diasRestantes === 0 ? 'hoy' : `${tooltip.diasRestantes} día${tooltip.diasRestantes === 1 ? '' : 's'}`}
+            </p>
+          )}
+          {tooltip.esFechaFija && (
+            <p className="text-red-600 text-xs font-medium mb-1">
+              🔒 Fecha límite fija
             </p>
           )}
           {tooltip.asig.tipo !== 'servicio' && tooltip.asig.pm_nombre && (
             <p className="text-gray-700 mb-1">
               <span className="text-gray-400 text-xs">PM: </span>
               {tooltip.asig.pm_nombre}
+            </p>
+          )}
+          {tooltip.asig.tipo !== 'servicio' && tooltip.asig.ingeniero_cargo_nombre && (
+            <p className="text-gray-700 mb-1">
+              <span className="text-gray-400 text-xs">Ingeniero: </span>
+              {tooltip.asig.ingeniero_cargo_nombre}
             </p>
           )}
           <p className="text-gray-500 text-xs">

@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import { formatFecha, formatFechaHora } from '../../utils/fecha'
 import {
@@ -139,6 +139,19 @@ export default function FichaProyecto() {
     setDisponibilidad(resultado)
     setVerificandoDisp(false)
   }
+
+  // C2: abrir tarea desde query param ?tarea=ID (viene del CalendarioRecursos)
+  const [searchParams, setSearchParams] = useSearchParams()
+  useEffect(() => {
+    const tareaId = searchParams.get('tarea')
+    if (!tareaId || !proyecto) return
+    const tarea = (proyecto.tareas || []).find(t => String(t.id) === String(tareaId))
+    if (tarea) {
+      setTab('Tareas')
+      abrirModal('tarea', tarea)
+      setSearchParams({}, { replace: true })
+    }
+  }, [proyecto, searchParams])
 
   useEffect(() => {
     if (tab === 'Costos' && !costos && !cargandoCostos) {
@@ -1037,9 +1050,27 @@ export default function FichaProyecto() {
                     <input type="date" value={modalForm.fecha_inicio?.slice(0,10) || ''} onChange={e => mf('fecha_inicio', e.target.value)} className={inp()} /></div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Fecha límite (SLA)</label>
-                    <input type="date" value={modalForm.fecha_limite?.slice(0,10) || ''} onChange={e => mf('fecha_limite', e.target.value)} className={inp()} />
+                    <input
+                      type="date"
+                      value={modalForm.fecha_limite?.slice(0,10) || ''}
+                      onChange={e => mf('fecha_limite', e.target.value)}
+                      readOnly={!!modalForm.fecha_limite_fija}
+                      className={`${inp()} ${modalForm.fecha_limite_fija ? 'opacity-60 bg-gray-50 cursor-not-allowed' : ''}`}
+                    />
                     <p className="text-[10px] text-gray-400 mt-0.5">Fecha máxima comprometida con el cliente</p>
                   </div>
+                </div>
+                <div className="flex items-center gap-2 mt-1">
+                  <input
+                    type="checkbox"
+                    id="fecha_limite_fija"
+                    checked={!!modalForm.fecha_limite_fija}
+                    onChange={e => mf('fecha_limite_fija', e.target.checked)}
+                    className="rounded"
+                  />
+                  <label htmlFor="fecha_limite_fija" className="text-xs text-gray-600 cursor-pointer">
+                    Fecha límite fija — no puede modificarse
+                  </label>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
