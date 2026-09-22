@@ -45,6 +45,7 @@ async function cargarTareasServicios(mes, anio) {
       dedicacion_pct:    100,
       tarea_nombre:      t.titulo,
       tarea_descripcion: t.descripcion ?? '',
+      contrato_nombre:   t.contrato_nombre ?? '',
     }))
   } catch { return [] }
 }
@@ -402,6 +403,9 @@ export default function CalendarioRecursos() {
           style={{ left: Math.min(tooltip.x + 12, window.innerWidth - 280), top: tooltip.y + 12 }}
         >
           <p className="font-semibold text-[#2C3A43] mb-1">{tooltip.asig.codigo}</p>
+          {tooltip.asig.tipo === 'servicio' && tooltip.asig.contrato_nombre && (
+            <p className="text-gray-600 text-xs mb-1">{tooltip.asig.contrato_nombre}</p>
+          )}
           {tooltip.asig.tarea_nombre && (
             <p className={`mb-1 ${tooltip.esPrioridadAlta ? 'text-red-600 font-medium' : 'text-gray-700'}`}>
               <span className="text-gray-400 text-xs font-normal">Tarea: </span>
