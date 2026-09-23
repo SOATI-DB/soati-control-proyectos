@@ -42,6 +42,7 @@ export default function FichaServicio() {
 
   useEffect(() => { cargar() }, [codigo])
 
+  /** Carga el contrato y sus tareas desde la API usando el código de la ruta. */
   async function cargar() {
     setLoading(true)
     try {
@@ -56,6 +57,7 @@ export default function FichaServicio() {
     finally { setLoading(false) }
   }
 
+  /** Carga la lista de recursos disponibles desde shell-api para los selectores de usuario. */
   async function cargarUsuarios() {
     try {
       const data = await getRecursosDisponibles()
@@ -63,6 +65,7 @@ export default function FichaServicio() {
     } catch { setUsuarios([]) }
   }
 
+  /** Abre el modal de edición del contrato precargando los datos actuales en el formulario. */
   function abrirEditar() {
     setFormEditar({
       nombre:              contrato.nombre              ?? '',
@@ -83,6 +86,7 @@ export default function FichaServicio() {
     setModalEditar(true)
   }
 
+  /** Persiste los cambios del contrato vía PATCH al endpoint de contratos. */
   async function guardarEdicion() {
     if (!formEditar.nombre || !formEditar.cliente_nombre || !formEditar.cliente_codigo || !formEditar.tipo) {
       setErrorEditar('Nombre, cliente y tipo son requeridos')
@@ -115,6 +119,7 @@ export default function FichaServicio() {
     finally { setGuardandoEditar(false) }
   }
 
+  /** Crea una nueva tarea (y sus instancias recurrentes si aplica) vía POST. */
   async function guardarTarea() {
     if (!formTarea.titulo) return
     try {
@@ -137,6 +142,7 @@ export default function FichaServicio() {
     } catch (e) { console.error(e) }
   }
 
+  /** Aplica un cambio de campo a una instancia individual o a toda la serie pendiente/en_progreso. */
   async function aplicarCambioSerie(tarea, campo, valor, soloEsta) {
     const idsPadre = tarea.recurrencia_padre_id ?? tarea.id
     const url = soloEsta
@@ -152,6 +158,7 @@ export default function FichaServicio() {
     await cargar()
   }
 
+  /** Cambia el estado de una tarea; si pertenece a una serie pregunta si aplica solo a esta instancia o a toda la serie. */
   async function cambiarEstadoTarea(tarea, nuevoEstado) {
     // Si es parte de una serie, preguntar si aplica solo a esta o a toda la serie
     if (tarea.recurrencia_tipo || tarea.recurrencia_padre_id) {
@@ -168,6 +175,7 @@ export default function FichaServicio() {
     } catch (e) { console.error(e) }
   }
 
+  /** Abre el modal de edición de una tarea, carga sus recursos adicionales y pre-carga usuarios si es necesario. */
   async function abrirEditarTarea(t) {
     if (usuarios.length === 0) await cargarUsuarios()
     setFormEditarTarea({
@@ -190,6 +198,7 @@ export default function FichaServicio() {
     } catch { setRecursosEnTarea([]) }
   }
 
+  /** Persiste los cambios de la tarea (título, fecha, asignado, tipo_consumo) vía PATCH. */
   async function guardarEditarTarea() {
     if (!formEditarTarea.titulo.trim()) return
     setGuardandoEditarTarea(true)
@@ -214,6 +223,7 @@ export default function FichaServicio() {
     }
   }
 
+  /** Agrega un recurso adicional a la tarea; si la tarea es recurrente abre el modal de propagación para preguntar el alcance. */
   async function agregarRecursoServicio() {
     const { tipo_recurso, recurso_id, fecha_inicio, fecha_fin, dedicacion_pct } = subFormData
     if (!recurso_id || !tipo_recurso || !fecha_inicio || !fecha_fin) return
@@ -258,6 +268,7 @@ export default function FichaServicio() {
     } catch (e) { console.error(e) }
   }
 
+  /** Elimina un recurso de la tarea; si la tarea es recurrente abre el modal de propagación para preguntar el alcance. */
   async function eliminarRecursoServicio(recursoId) {
     const r = recursosEnTarea.find(x => x.id === recursoId)
     if (modalEditarTarea && (modalEditarTarea.recurrencia_tipo || modalEditarTarea.recurrencia_padre_id) && r) {
@@ -273,6 +284,7 @@ export default function FichaServicio() {
     } catch (e) { console.error(e) }
   }
 
+  /** Actualiza fechas y dedicación de un recurso existente vía PATCH. */
   async function guardarEdicionRecursoServicio(recursoId) {
     try {
       const r = await fetch(`${CP_API}/api/recursos/${recursoId}`, {
@@ -880,7 +892,12 @@ export default function FichaServicio() {
                 {!subFormVisible && (
                   <button
                     type="button"
-                    onClick={() => { setSubFormVisible(true); setSubFormData({}) }}
+                    onClick={() => {
+                      // C1: pre-poblar fechas con la fecha de la tarea para que la validación no falle
+                      const fechaTarea = modalEditarTarea?.fecha?.slice(0, 10) || ''
+                      setSubFormVisible(true)
+                      setSubFormData({ fecha_inicio: fechaTarea, fecha_fin: fechaTarea })
+                    }}
                     className="text-xs text-[#4E738A] hover:underline"
                   >
                     + Agregar
@@ -1039,13 +1056,95 @@ export default function FichaServicio() {
             <p className="text-sm text-[#5f6b75] mb-5">¿Modificar solo esta instancia o toda la serie?</p>
             <div className="flex flex-col gap-2">
               <button
-                onClick={() => aplicarCambioSerie(modalPropagar.tarea, modalPropagar.campo, modalPropagar.valor, true)}
+                onClick={async () => {
+                  if (modalPropagar.accion === 'agregar') {
+                    // C2: agregar recurso solo a esta instancia
+                    try {
+                      const r = await fetch(`${CP_API}/api/recursos`, {
+                        method:  'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
+                        body:    JSON.stringify(modalPropagar.recurso),
+                      })
+                      if (r.ok) {
+                        const nuevo = await r.json()
+                        setRecursosEnTarea(list => [...list, nuevo])
+                        setSubFormVisible(false)
+                        setSubFormData({})
+                      }
+                    } catch (e) { console.error('[modalPropagar agregar instancia]', e) }
+                    setModalPropagar(null)
+                  } else if (modalPropagar.accion === 'eliminar') {
+                    // C2: eliminar recurso solo de esta instancia
+                    try {
+                      await fetch(`${CP_API}/api/recursos/${modalPropagar.recurso.id}`, {
+                        method:  'DELETE',
+                        headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
+                      })
+                      setRecursosEnTarea(list => list.filter(x => x.id !== modalPropagar.recurso.id))
+                    } catch (e) { console.error('[modalPropagar eliminar instancia]', e) }
+                    setModalPropagar(null)
+                  } else {
+                    // Cambio de campo (estado, etc.) — comportamiento original
+                    aplicarCambioSerie(modalPropagar.tarea, modalPropagar.campo, modalPropagar.valor, true)
+                  }
+                }}
                 className="px-4 py-2 bg-[#4E738A] text-white text-sm rounded-lg hover:bg-[#3a5a6e]"
               >
                 Solo esta instancia
               </button>
               <button
-                onClick={() => aplicarCambioSerie(modalPropagar.tarea, modalPropagar.campo, modalPropagar.valor, false)}
+                onClick={async () => {
+                  if (modalPropagar.accion === 'agregar') {
+                    // C2: agregar recurso a todas las instancias pendientes/en_progreso de la serie
+                    try {
+                      const padreId = modalPropagar.tarea.recurrencia_padre_id ?? modalPropagar.tarea.id
+                      const instRes = await fetch(`${CP_API}/api/servicios/tareas/serie/${padreId}/instancias`, {
+                        headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` }
+                      })
+                      if (instRes.ok) {
+                        const instancias = await instRes.json()
+                        for (const inst of instancias) {
+                          const fechaInst = inst.fecha ? String(inst.fecha).slice(0, 10) : modalPropagar.recurso.fecha_inicio
+                          await fetch(`${CP_API}/api/recursos`, {
+                            method:  'POST',
+                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
+                            body:    JSON.stringify({
+                              ...modalPropagar.recurso,
+                              servicio_tarea_id: inst.id,
+                              fecha_inicio:      fechaInst,
+                              fecha_fin:         fechaInst,
+                            }),
+                          }).catch(() => {})
+                        }
+                      }
+                      // Recargar recursos de la tarea actual
+                      const r = await fetch(`${CP_API}/api/recursos/servicio-tarea/${modalPropagar.tarea.id}`, {
+                        headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` }
+                      })
+                      if (r.ok) setRecursosEnTarea(await r.json())
+                      setSubFormVisible(false)
+                      setSubFormData({})
+                    } catch (e) { console.error('[modalPropagar agregar serie]', e) }
+                    setModalPropagar(null)
+                  } else if (modalPropagar.accion === 'eliminar') {
+                    // C2: eliminar recurso de todas las instancias pendientes/en_progreso de la serie
+                    try {
+                      const padreId = modalPropagar.tarea.recurrencia_padre_id ?? modalPropagar.tarea.id
+                      await fetch(`${CP_API}/api/servicios/tareas/serie/${padreId}/recursos/${modalPropagar.recurso.usuario_id}`, {
+                        method:  'DELETE',
+                        headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
+                      })
+                      const r = await fetch(`${CP_API}/api/recursos/servicio-tarea/${modalPropagar.tarea.id}`, {
+                        headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` }
+                      })
+                      if (r.ok) setRecursosEnTarea(await r.json())
+                    } catch (e) { console.error('[modalPropagar eliminar serie]', e) }
+                    setModalPropagar(null)
+                  } else {
+                    // Cambio de campo (estado, etc.) — comportamiento original
+                    aplicarCambioSerie(modalPropagar.tarea, modalPropagar.campo, modalPropagar.valor, false)
+                  }
+                }}
                 className="px-4 py-2 border border-[#4E738A] text-[#4E738A] text-sm rounded-lg hover:bg-[#4E738A]/5"
               >
                 Toda la serie (pendientes y en progreso)
