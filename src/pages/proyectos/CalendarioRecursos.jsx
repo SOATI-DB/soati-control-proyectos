@@ -25,30 +25,6 @@ function colorProyecto(codigo) {
   return `hsl(${hue}, ${sat}%, ${lit}%)`
 }
 
-async function cargarTareasServicios(mes, anio) {
-  try {
-    const r = await fetch(
-      `${CP_API}/api/servicios/tareas-mes?mes=${mes}&anio=${anio}`,
-      { headers: { Authorization: `Bearer ${token()}` } }
-    )
-    if (!r.ok) return []
-    const tareas = await r.json()
-    return tareas.map(t => ({
-      ...t,
-      tipo:              'servicio',
-      usuario_id:        t.asignado_id ?? '_sin_asignar',
-      usuario_nombre:    t.asignado_nombre ?? 'Sin asignar',
-      fecha_inicio:      t.fecha,
-      fecha_fin:         t.fecha,
-      codigo:            t.contrato_codigo,
-      tipo_recurso:      'servicio',
-      dedicacion_pct:    100,
-      tarea_nombre:      t.titulo,
-      tarea_descripcion: t.descripcion ?? '',
-      contrato_nombre:   t.contrato_nombre ?? '',
-    }))
-  } catch { return [] }
-}
 
 function anchoBarra(asig) {
   if (asig.hora_inicio && asig.hora_fin) {
@@ -161,20 +137,28 @@ export default function CalendarioRecursos() {
           vistos.add(a.id)
           return true
         })
-        asigBase = asigBase.map(asig => ({
-          ...asig,
-          prioridad:              asig.tarea_prioridad        ?? asig.prioridad        ?? null,
-          fecha_limite:           asig.tarea_fecha_limite      ?? asig.fecha_limite      ?? null,
-          fecha_limite_fija:      asig.tarea_fecha_limite_fija ?? asig.fecha_limite_fija ?? false,
-          ingeniero_cargo_nombre: asig.ingeniero_cargo_nombre  ?? null,
-          proyecto_id:            asig.proyecto_id             ?? null,
-          tarea_id:               asig.tarea_id               ?? null,
-        }))
-        const tareas = await cargarTareasServicios(mesAnio, anioActual).catch(() => [])
-        setAsignaciones([
-          ...asigBase,
-          ...(Array.isArray(tareas) ? tareas : []),
-        ])
+        asigBase = asigBase.map(asig => {
+          const esServicio = !!asig.servicio_tarea_id
+          return {
+            ...asig,
+            tipo:              esServicio ? 'servicio' : 'proyecto',
+            codigo:            esServicio ? asig.sv_codigo        : asig.codigo,
+            tarea_nombre:      esServicio ? asig.sv_tarea_nombre  : asig.tarea_nombre,
+            tarea_descripcion: esServicio ? asig.sv_tarea_descripcion : null,
+            contrato_nombre:   asig.sv_contrato_nombre ?? null,
+            prioridad:         esServicio ? null : (asig.tarea_prioridad ?? null),
+            fecha_limite:      esServicio ? null : (asig.tarea_fecha_limite ?? null),
+            fecha_limite_fija: esServicio
+              ? (asig.sv_fecha_limite_fija ?? false)
+              : (asig.tarea_fecha_limite_fija ?? false),
+            pm_nombre:              esServicio ? null : (asig.pm_nombre ?? null),
+            ingeniero_cargo_nombre: esServicio ? null : (asig.ingeniero_cargo_nombre ?? null),
+            proyecto_id:            asig.proyecto_id      ?? null,
+            tarea_id:               asig.tarea_id         ?? null,
+            servicio_tarea_id:      asig.servicio_tarea_id ?? null,
+          }
+        })
+        setAsignaciones(asigBase)
         setCargando(false)
       } catch {
         setAsignaciones([])
@@ -366,7 +350,9 @@ export default function CalendarioRecursos() {
                           onMouseEnter={e => setTooltip({ x: e.clientX, y: e.clientY, asig, esSlaUrgente, esPrioridadAlta, esFechaFija, diasRestantes })}
                           onMouseLeave={() => setTooltip(null)}
                           onClick={() => {
-                            if (asig.proyecto_id) {
+                            if (asig.servicio_tarea_id && asig.codigo) {
+                              navigate(`/servicios/${asig.codigo}`)
+                            } else if (asig.proyecto_id) {
                               navigate(`/proyectos/${asig.proyecto_id}?tarea=${asig.tarea_id}`)
                             }
                           }}

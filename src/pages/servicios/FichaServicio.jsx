@@ -24,11 +24,13 @@ export default function FichaServicio() {
 
   const [modalTarea, setModalTarea]             = useState(false)
   const [modalEditarTarea, setModalEditarTarea] = useState(null)
+  const [modalPropagar, setModalPropagar]       = useState(null) // { tarea, campo, valor }
   const [formEditarTarea, setFormEditarTarea]   = useState({ titulo: '', fecha: '' })
   const [guardandoEditarTarea, setGuardandoEditarTarea] = useState(false)
   const [formTarea, setFormTarea]               = useState({
     titulo: '', descripcion: '', asignado_id: '', asignado_nombre: '',
-    fecha: '', hora_inicio: '', hora_fin: ''
+    fecha: '', hora_inicio: '', hora_fin: '',
+    recurrencia_tipo: '', recurrencia_fin: ''
   })
   const [usuarios, setUsuarios] = useState([])
 
@@ -115,21 +117,43 @@ export default function FichaServicio() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
         body: JSON.stringify({
           ...formTarea,
-          hora_inicio: formTarea.hora_inicio || null,
-          hora_fin:    formTarea.hora_fin    || null,
+          hora_inicio:      formTarea.hora_inicio      || null,
+          hora_fin:         formTarea.hora_fin         || null,
+          recurrencia_tipo: formTarea.recurrencia_tipo || null,
+          recurrencia_fin:  formTarea.recurrencia_fin  || null,
         })
       })
       if (r.ok) {
         setModalTarea(false)
-        setFormTarea({ titulo: '', descripcion: '', asignado_id: '', asignado_nombre: '', fecha: '', hora_inicio: '', hora_fin: '' })
+        setFormTarea({ titulo: '', descripcion: '', asignado_id: '', asignado_nombre: '', fecha: '', hora_inicio: '', hora_fin: '', recurrencia_tipo: '', recurrencia_fin: '' })
         cargar()
       }
     } catch (e) { console.error(e) }
   }
 
-  async function cambiarEstadoTarea(tareaId, nuevoEstado) {
+  async function aplicarCambioSerie(tarea, campo, valor, soloEsta) {
+    const idsPadre = tarea.recurrencia_padre_id ?? tarea.id
+    const url = soloEsta
+      ? `${CP_API}/api/servicios/tareas/${tarea.id}`
+      : `${CP_API}/api/servicios/tareas/serie/${idsPadre}`
+
+    await fetch(url, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
+      body:    JSON.stringify({ [campo]: valor }),
+    })
+    setModalPropagar(null)
+    await cargar()
+  }
+
+  async function cambiarEstadoTarea(tarea, nuevoEstado) {
+    // Si es parte de una serie, preguntar si aplica solo a esta o a toda la serie
+    if (tarea.recurrencia_tipo || tarea.recurrencia_padre_id) {
+      setModalPropagar({ tarea, campo: 'estado', valor: nuevoEstado })
+      return
+    }
     try {
-      await fetch(`${CP_API}/api/servicios/tareas/${tareaId}`, {
+      await fetch(`${CP_API}/api/servicios/tareas/${tarea.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
         body: JSON.stringify({ estado: nuevoEstado })
@@ -296,8 +320,18 @@ export default function FichaServicio() {
                   {tareas.map(t => (
                     <div key={t.id} className="flex items-start gap-3 p-3 border border-[#E8EAEC] rounded-lg">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-medium text-[#2C3A43] text-sm">{t.titulo}</p>
+                          {t.recurrencia_tipo && t.recurrencia_padre_id === null && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 font-medium">
+                              🔁 {t.recurrencia_tipo}
+                            </span>
+                          )}
+                          {t.recurrencia_padre_id !== null && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-[#5f6b75]">
+                              instancia
+                            </span>
+                          )}
                           {puedeGestionar && (
                             <button
                               onClick={() => abrirEditarTarea(t)}
@@ -331,7 +365,7 @@ export default function FichaServicio() {
                       </div>
                       <select
                         value={t.estado}
-                        onChange={e => cambiarEstadoTarea(t.id, e.target.value)}
+                        onChange={e => cambiarEstadoTarea(t, e.target.value)}
                         disabled={!puedeGestionar}
                         className="text-xs border border-[#E8EAEC] rounded px-2 py-1 bg-white"
                       >
@@ -599,6 +633,46 @@ export default function FichaServicio() {
                   className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm resize-none"
                 />
               </div>
+              <div className="border-t border-[#E8EAEC] pt-3">
+                <label className="flex items-center gap-2 text-sm text-[#5f6b75] cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={!!formTarea.recurrencia_tipo}
+                    onChange={e => setFormTarea(f => ({ ...f, recurrencia_tipo: e.target.checked ? 'mensual' : '', recurrencia_fin: '' }))}
+                  />
+                  Tarea recurrente
+                </label>
+                {formTarea.recurrencia_tipo && (
+                  <div className="mt-2 grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-sm text-[#5f6b75]">Frecuencia</label>
+                      <select
+                        value={formTarea.recurrencia_tipo}
+                        onChange={e => setFormTarea(f => ({ ...f, recurrencia_tipo: e.target.value }))}
+                        className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm"
+                      >
+                        <option value="semanal">Semanal</option>
+                        <option value="quincenal">Quincenal</option>
+                        <option value="mensual">Mensual</option>
+                        <option value="bimensual">Bimensual</option>
+                        <option value="trimestral">Trimestral</option>
+                        <option value="cuatrimestral">Cuatrimestral</option>
+                        <option value="semestral">Semestral</option>
+                        <option value="anual">Anual</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-sm text-[#5f6b75]">Repetir hasta</label>
+                      <input
+                        type="date"
+                        value={formTarea.recurrencia_fin}
+                        onChange={e => setFormTarea(f => ({ ...f, recurrencia_fin: e.target.value }))}
+                        className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="flex justify-end gap-2 mt-5">
               <button onClick={() => setModalTarea(false)} className="px-4 py-2 text-sm text-[#5f6b75] hover:text-[#2C3A43]">Cancelar</button>
@@ -646,6 +720,33 @@ export default function FichaServicio() {
                 className="px-4 py-2 bg-[#4E738A] text-white text-sm rounded-lg hover:bg-[#3a5a6e] disabled:opacity-50"
               >
                 {guardandoEditarTarea ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal propagación a serie */}
+      {modalPropagar && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+            <h3 className="font-semibold text-[#2C3A43] mb-2">Tarea recurrente</h3>
+            <p className="text-sm text-[#5f6b75] mb-5">¿Modificar solo esta instancia o toda la serie?</p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => aplicarCambioSerie(modalPropagar.tarea, modalPropagar.campo, modalPropagar.valor, true)}
+                className="px-4 py-2 bg-[#4E738A] text-white text-sm rounded-lg hover:bg-[#3a5a6e]"
+              >
+                Solo esta instancia
+              </button>
+              <button
+                onClick={() => aplicarCambioSerie(modalPropagar.tarea, modalPropagar.campo, modalPropagar.valor, false)}
+                className="px-4 py-2 border border-[#4E738A] text-[#4E738A] text-sm rounded-lg hover:bg-[#4E738A]/5"
+              >
+                Toda la serie (pendientes y en progreso)
+              </button>
+              <button onClick={() => setModalPropagar(null)} className="text-sm text-[#5f6b75] hover:text-[#2C3A43] mt-1">
+                Cancelar
               </button>
             </div>
           </div>

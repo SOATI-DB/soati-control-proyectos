@@ -82,6 +82,7 @@ export default function FichaProyecto() {
   // Edición inline de recursos
   const [editandoRecurso, setEditandoRecurso] = useState(null)
   const [formRecurso, setFormRecurso] = useState({})
+  const [modalPropagar, setModalPropagar] = useState(null)
 
   // Subproyectos modal
   const [modalSP, setModalSP] = useState(null)
@@ -268,6 +269,23 @@ export default function FichaProyecto() {
       }
     }
     setErrorSubForm(null)
+    const tareaActual = modal?.item
+    if (tareaActual && (tareaActual.recurrencia_tipo || tareaActual.recurrencia_padre_id)) {
+      const recurso = recursosDisponibles.find(r => String(r.id) === String(recurso_id))
+      const payload = {
+        proyecto_id:    parseInt(id),
+        usuario_id:     String(recurso_id),
+        usuario_nombre: recurso?.nombre ?? '',
+        tipo_recurso,
+        fecha_inicio,
+        fecha_fin,
+        dedicacion_pct: parseInt(dedicacion_pct) || 100,
+        forzado:        forzar ? 1 : 0,
+        conflicto_nota: conflicto_nota ?? null,
+      }
+      setModalPropagar({ accion: 'agregar', recurso: payload, tarea: tareaActual })
+      return
+    }
     const recurso = recursosDisponibles.find(r => String(r.id) === String(recurso_id))
     const payload = {
       proyecto_id:    parseInt(id),
@@ -363,6 +381,54 @@ export default function FichaProyecto() {
     setRecursosEnTarea(prev => prev.map(rec => rec.id === recursoId ? { ...rec, ...formRecurso } : rec))
     setEditandoRecurso(null)
     setErrorSubForm(null)
+  }
+
+  async function aplicarPropagacionSerie(soloEsta) {
+    if (!modalPropagar) return
+    const { accion, recurso, tarea } = modalPropagar
+    const padreId = tarea.recurrencia_padre_id ?? tarea.id
+    const API = import.meta.env.VITE_API_URL ?? 'http://localhost:3011'
+    const hdrs = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('soati_shell_token')}` })
+
+    try {
+      if (accion === 'agregar') {
+        if (soloEsta) {
+          await asignarRecurso({ ...recurso, tarea_id: tarea.id })
+        } else {
+          const r = await fetch(`${API}/api/tareas/serie/${padreId}/instancias`, { headers: hdrs() })
+          if (r.ok) {
+            const instancias = await r.json()
+            for (const inst of instancias) {
+              const fechaInst = inst.fecha_inicio
+                ? String(inst.fecha_inicio).slice(0, 10)
+                : recurso.fecha_inicio
+              await asignarRecurso({
+                ...recurso,
+                tarea_id:     inst.id,
+                fecha_inicio: fechaInst,
+                fecha_fin:    fechaInst,
+              }).catch(() => {})
+            }
+          }
+        }
+      } else if (accion === 'eliminar') {
+        if (soloEsta) {
+          await eliminarRecurso(recurso.id)
+        } else {
+          await fetch(`${API}/api/tareas/serie/${padreId}/recursos/${recurso.usuario_id}`, {
+            method: 'DELETE', headers: hdrs()
+          })
+        }
+      }
+    } catch (err) {
+      console.error('[aplicarPropagacionSerie]', err)
+    }
+
+    setModalPropagar(null)
+    if (modal?.item?.id) {
+      getRecursosTarea(modal.item.id).then(data => setRecursosEnTarea(Array.isArray(data) ? data : []))
+    }
+    await cargar()
   }
 
   async function guardarSP() {
@@ -742,9 +808,19 @@ export default function FichaProyecto() {
               .map(t => (
               <div key={t.id} className="border border-gray-100 rounded-lg p-3 flex items-center justify-between">
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-medium text-sm text-[#2c3e50]">{t.titulo}</p>
                     <span className={`text-xs px-1.5 py-0.5 rounded-full ${PRIORIDAD_ESTILOS[t.prioridad] || 'bg-gray-100 text-gray-500'}`}>{t.prioridad}</span>
+                    {t.recurrencia_tipo && t.recurrencia_padre_id === null && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 font-medium">
+                        🔁 {t.recurrencia_tipo}
+                      </span>
+                    )}
+                    {t.recurrencia_padre_id !== null && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-[#5f6b75]">
+                        instancia
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-gray-400 mt-0.5">
                     {t.estado} {t.asignado_nombre && `· ${t.asignado_nombre}`} {t.fecha_limite && `· SLA: ${formatFecha(t.fecha_limite)}`}
@@ -1072,6 +1148,37 @@ export default function FichaProyecto() {
                     Fecha límite fija — no puede modificarse
                   </label>
                 </div>
+                <div className="border-t border-gray-100 pt-3">
+                  <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={!!modalForm.recurrencia_tipo}
+                      onChange={e => mf('recurrencia_tipo', e.target.checked ? 'mensual' : null)}
+                    />
+                    Tarea recurrente
+                  </label>
+                  {modalForm.recurrencia_tipo && (
+                    <div className="mt-2 grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Frecuencia</label>
+                        <select value={modalForm.recurrencia_tipo} onChange={e => mf('recurrencia_tipo', e.target.value)} className={inp()}>
+                          <option value="semanal">Semanal</option>
+                          <option value="quincenal">Quincenal</option>
+                          <option value="mensual">Mensual</option>
+                          <option value="bimensual">Bimensual</option>
+                          <option value="trimestral">Trimestral</option>
+                          <option value="cuatrimestral">Cuatrimestral</option>
+                          <option value="semestral">Semestral</option>
+                          <option value="anual">Anual</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Repetir hasta</label>
+                        <input type="date" value={modalForm.recurrencia_fin ?? ''} onChange={e => mf('recurrencia_fin', e.target.value)} className={inp()} />
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Duración estimada</label>
@@ -1239,7 +1346,15 @@ export default function FichaProyecto() {
                                       }}
                                       className="text-gray-400 hover:text-red-500 text-lg leading-none">×</button>
                                   : <button type="button"
-                                      onClick={async () => { await eliminarRecurso(r.id); setRecursosEnTarea(list => list.filter(x => x.id !== r.id)) }}
+                                      onClick={async () => {
+                                        const tareaActual = modal?.item
+                                        if (tareaActual && (tareaActual.recurrencia_tipo || tareaActual.recurrencia_padre_id)) {
+                                          setModalPropagar({ accion: 'eliminar', recurso: r, tarea: tareaActual })
+                                          return
+                                        }
+                                        await eliminarRecurso(r.id)
+                                        setRecursosEnTarea(list => list.filter(x => x.id !== r.id))
+                                      }}
                                       className="text-gray-400 hover:text-red-500 text-lg leading-none">×</button>
                                 }
                               </div>
@@ -1444,6 +1559,37 @@ export default function FichaProyecto() {
               </button>
               <button onClick={guardarSP} disabled={guardandoSP || !formSP.nombre?.trim()} className="px-4 py-2 text-sm bg-[#2C3A43] text-white rounded-lg hover:bg-[#1e2a32] disabled:opacity-40">
                 {guardandoSP ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modal propagación a serie — proyectos */}
+      {modalPropagar && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <h3 className="font-semibold text-[#2C3A43]">Tarea recurrente</h3>
+            <p className="text-sm text-[#5f6b75]">
+              ¿{modalPropagar.accion === 'agregar' ? 'Agregar este recurso' : 'Eliminar este recurso'} solo en esta instancia o en toda la serie?
+            </p>
+            <div className="flex flex-col gap-2 pt-1">
+              <button
+                onClick={() => aplicarPropagacionSerie(true)}
+                className="w-full px-4 py-2 bg-[#4E738A] text-white text-sm rounded-lg hover:bg-[#3a5a6e] transition-colors"
+              >
+                Solo esta instancia
+              </button>
+              <button
+                onClick={() => aplicarPropagacionSerie(false)}
+                className="w-full px-4 py-2 border border-[#4E738A] text-[#4E738A] text-sm rounded-lg hover:bg-[#4E738A]/5 transition-colors"
+              >
+                Toda la serie (pendientes y en progreso)
+              </button>
+              <button
+                onClick={() => setModalPropagar(null)}
+                className="text-sm text-[#5f6b75] hover:text-[#2C3A43] mt-1"
+              >
+                Cancelar
               </button>
             </div>
           </div>
