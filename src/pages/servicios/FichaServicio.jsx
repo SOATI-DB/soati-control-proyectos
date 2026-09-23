@@ -27,6 +27,11 @@ export default function FichaServicio() {
   const [modalPropagar, setModalPropagar]       = useState(null) // { tarea, campo, valor }
   const [formEditarTarea, setFormEditarTarea]   = useState({ titulo: '', fecha: '' })
   const [guardandoEditarTarea, setGuardandoEditarTarea] = useState(false)
+  const [recursosEnTarea, setRecursosEnTarea]   = useState([])
+  const [subFormVisible, setSubFormVisible]     = useState(false)
+  const [subFormData, setSubFormData]           = useState({})
+  const [editandoRecurso, setEditandoRecurso]   = useState(null)
+  const [formRecurso, setFormRecurso]           = useState({})
   const [formTarea, setFormTarea]               = useState({
     titulo: '', descripcion: '', asignado_id: '', asignado_nombre: '',
     fecha: '', hora_inicio: '', hora_fin: '',
@@ -170,7 +175,17 @@ export default function FichaServicio() {
       asignado_id:     t.asignado_id ?? '',
       asignado_nombre: t.asignado_nombre ?? '',
     })
+    setSubFormVisible(false)
+    setSubFormData({})
+    setEditandoRecurso(null)
     setModalEditarTarea(t)
+    try {
+      const r = await fetch(`${CP_API}/api/recursos/servicio-tarea/${t.id}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` }
+      })
+      const data = r.ok ? await r.json() : []
+      setRecursosEnTarea(Array.isArray(data) ? data : [])
+    } catch { setRecursosEnTarea([]) }
   }
 
   async function guardarEditarTarea() {
@@ -194,6 +209,75 @@ export default function FichaServicio() {
     } finally {
       setGuardandoEditarTarea(false)
     }
+  }
+
+  async function agregarRecursoServicio() {
+    const { tipo_recurso, recurso_id, fecha_inicio, fecha_fin, dedicacion_pct } = subFormData
+    if (!recurso_id || !tipo_recurso || !fecha_inicio || !fecha_fin) return
+    const recurso = usuarios.find(r => String(r.id) === String(recurso_id))
+
+    if (modalEditarTarea && (modalEditarTarea.recurrencia_tipo || modalEditarTarea.recurrencia_padre_id)) {
+      const payload = {
+        servicio_tarea_id: modalEditarTarea.id,
+        usuario_id:        String(recurso_id),
+        usuario_nombre:    recurso?.nombre ?? '',
+        tipo_recurso,
+        fecha_inicio,
+        fecha_fin,
+        dedicacion_pct:    parseInt(dedicacion_pct) || 100,
+      }
+      setModalPropagar({ accion: 'agregar', recurso: payload, tarea: modalEditarTarea })
+      return
+    }
+
+    try {
+      const r = await fetch(`${CP_API}/api/recursos`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
+        body: JSON.stringify({
+          servicio_tarea_id: modalEditarTarea.id,
+          usuario_id:        String(recurso_id),
+          usuario_nombre:    recurso?.nombre ?? '',
+          tipo_recurso,
+          fecha_inicio,
+          fecha_fin,
+          dedicacion_pct: parseInt(dedicacion_pct) || 100,
+        }),
+      })
+      if (r.ok) {
+        const nuevo = await r.json()
+        setRecursosEnTarea(list => [...list, nuevo])
+        setSubFormVisible(false)
+        setSubFormData({})
+      }
+    } catch (e) { console.error(e) }
+  }
+
+  async function eliminarRecursoServicio(recursoId) {
+    const r = recursosEnTarea.find(x => x.id === recursoId)
+    if (modalEditarTarea && (modalEditarTarea.recurrencia_tipo || modalEditarTarea.recurrencia_padre_id) && r) {
+      setModalPropagar({ accion: 'eliminar', recurso: r, tarea: modalEditarTarea })
+      return
+    }
+    try {
+      await fetch(`${CP_API}/api/recursos/${recursoId}`, {
+        method:  'DELETE',
+        headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
+      })
+      setRecursosEnTarea(list => list.filter(x => x.id !== recursoId))
+    } catch (e) { console.error(e) }
+  }
+
+  async function guardarEdicionRecursoServicio(recursoId) {
+    try {
+      await fetch(`${CP_API}/api/recursos/${recursoId}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
+        body: JSON.stringify(formRecurso),
+      })
+      setRecursosEnTarea(prev => prev.map(r => r.id === recursoId ? { ...r, ...formRecurso } : r))
+      setEditandoRecurso(null)
+    } catch (e) { console.error(e) }
   }
 
   if (loading) return <div className="text-center text-[#9aa1a9] py-12">Cargando...</div>
@@ -364,7 +448,14 @@ export default function FichaServicio() {
                             #{t.zammad_ticket_id}
                           </a>
                         )}
-                        {t.asignado_nombre && <p className="text-xs text-[#9aa1a9] mt-0.5">{t.asignado_nombre}</p>}
+                        {t.asignado_nombre && (
+                          <p className="text-xs text-[#9aa1a9] mt-0.5">
+                            {t.asignado_nombre}
+                            {(t.recursos || []).slice(1).map(r => (
+                              <span key={r.id} className="ml-2">· {r.usuario_nombre}</span>
+                            ))}
+                          </p>
+                        )}
                         {t.fecha && (
                           <p className="text-xs text-[#9aa1a9] mt-0.5">
                             {t.fecha}{t.hora_inicio ? ` · ${t.hora_inicio}${t.hora_fin ? ` - ${t.hora_fin}` : ''}` : ''}
@@ -734,6 +825,136 @@ export default function FichaServicio() {
                   <option key={u.id} value={u.id}>{u.nombre}</option>
                 ))}
               </select>
+            </div>
+
+            {/* Recursos adicionales */}
+            <div className="border-t border-[#E8EAEC] pt-3">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm text-[#5f6b75]">Recursos adicionales</label>
+                {!subFormVisible && (
+                  <button
+                    type="button"
+                    onClick={() => { setSubFormVisible(true); setSubFormData({}) }}
+                    className="text-xs text-[#4E738A] hover:underline"
+                  >
+                    + Agregar
+                  </button>
+                )}
+              </div>
+
+              {recursosEnTarea.length > 0 && (
+                <div className="space-y-1.5 mb-2">
+                  {recursosEnTarea.map(r => (
+                    <div key={r.id} className="border border-[#E8EAEC] rounded-lg p-2">
+                      {editandoRecurso === r.id ? (
+                        <div className="space-y-2">
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <label className="block text-[10px] text-[#5f6b75] mb-0.5">Fecha inicio</label>
+                              <input type="date" value={formRecurso.fecha_inicio ?? ''}
+                                onChange={e => setFormRecurso(f => ({ ...f, fecha_inicio: e.target.value }))}
+                                className="w-full border border-[#E8EAEC] rounded px-2 py-1 text-xs" />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] text-[#5f6b75] mb-0.5">Fecha fin</label>
+                              <input type="date" value={formRecurso.fecha_fin ?? ''}
+                                onChange={e => setFormRecurso(f => ({ ...f, fecha_fin: e.target.value }))}
+                                className="w-full border border-[#E8EAEC] rounded px-2 py-1 text-xs" />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] text-[#5f6b75] mb-0.5">Dedicación (%)</label>
+                              <input type="number" min="1" max="100" value={formRecurso.dedicacion_pct ?? 100}
+                                onChange={e => setFormRecurso(f => ({ ...f, dedicacion_pct: parseInt(e.target.value) || 100 }))}
+                                className="w-full border border-[#E8EAEC] rounded px-2 py-1 text-xs" />
+                            </div>
+                          </div>
+                          <div className="flex justify-end gap-2">
+                            <button type="button" onClick={() => setEditandoRecurso(null)}
+                              className="text-xs text-[#5f6b75] hover:text-[#2C3A43]">Cancelar</button>
+                            <button type="button" onClick={() => guardarEdicionRecursoServicio(r.id)}
+                              className="text-xs bg-[#4E738A] text-white px-3 py-1 rounded hover:bg-[#3d5c70]">Guardar</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <span className="text-xs text-[#2C3A43]">{r.usuario_nombre} · {r.tipo_recurso} · {r.dedicacion_pct}%</span>
+                            <div className="text-[11px] text-[#9aa1a9] mt-0.5">
+                              {r.fecha_inicio ? String(r.fecha_inicio).slice(0,10) : '—'} → {r.fecha_fin ? String(r.fecha_fin).slice(0,10) : '—'}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 ml-3 shrink-0">
+                            <button type="button"
+                              onClick={() => {
+                                setFormRecurso({
+                                  fecha_inicio:   r.fecha_inicio ? String(r.fecha_inicio).slice(0,10) : '',
+                                  fecha_fin:      r.fecha_fin    ? String(r.fecha_fin).slice(0,10)    : '',
+                                  dedicacion_pct: r.dedicacion_pct ?? 100,
+                                })
+                                setEditandoRecurso(r.id)
+                              }}
+                              className="text-xs text-[#4E738A] hover:underline">Editar</button>
+                            <button type="button"
+                              onClick={() => eliminarRecursoServicio(r.id)}
+                              className="text-[#9aa1a9] hover:text-red-500 text-lg leading-none">×</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {subFormVisible && (
+                <div className="bg-[#4E738A]/5 border border-[#4E738A]/20 rounded-lg p-3 space-y-2">
+                  <div>
+                    <label className="block text-xs text-[#5f6b75] mb-1">Tipo de recurso</label>
+                    <select value={subFormData.tipo_recurso || ''}
+                      onChange={e => setSubFormData(f => ({ ...f, tipo_recurso: e.target.value, recurso_id: '' }))}
+                      className="w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm">
+                      <option value="">— Seleccionar —</option>
+                      <option value="ingenieria">Ingeniería</option>
+                      <option value="planos">Planos</option>
+                      <option value="diseno">Diseño</option>
+                      <option value="ensamble">Técnico de ensamble</option>
+                      <option value="campo">Técnico de campo</option>
+                    </select>
+                  </div>
+                  {subFormData.tipo_recurso && (
+                    <div>
+                      <label className="block text-xs text-[#5f6b75] mb-1">Recurso</label>
+                      <select value={subFormData.recurso_id || ''}
+                        onChange={e => setSubFormData(f => ({ ...f, recurso_id: e.target.value }))}
+                        className="w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm">
+                        <option value="">— Seleccionar —</option>
+                        {usuarios.filter(r => r.tipos?.includes(subFormData.tipo_recurso)).map(r => (
+                          <option key={r.id} value={r.id}>{r.nombre}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs text-[#5f6b75] mb-1">Fecha inicio</label>
+                      <input type="date" value={subFormData.fecha_inicio || modalEditarTarea?.fecha?.slice(0,10) || ''}
+                        onChange={e => setSubFormData(f => ({ ...f, fecha_inicio: e.target.value }))}
+                        className="w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-[#5f6b75] mb-1">Fecha fin</label>
+                      <input type="date" value={subFormData.fecha_fin || modalEditarTarea?.fecha?.slice(0,10) || ''}
+                        onChange={e => setSubFormData(f => ({ ...f, fecha_fin: e.target.value }))}
+                        className="w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm" />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button type="button" onClick={() => { setSubFormVisible(false); setSubFormData({}) }}
+                      className="text-xs text-[#5f6b75] hover:text-[#2C3A43]">Cancelar</button>
+                    <button type="button" onClick={agregarRecursoServicio}
+                      className="text-xs bg-[#4E738A] text-white px-3 py-1 rounded hover:bg-[#3d5c70]">Agregar</button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
