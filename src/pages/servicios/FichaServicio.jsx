@@ -35,7 +35,8 @@ export default function FichaServicio() {
   const [formTarea, setFormTarea]               = useState({
     titulo: '', descripcion: '', asignado_id: '', asignado_nombre: '',
     fecha: '', hora_inicio: '', hora_fin: '',
-    recurrencia_tipo: '', recurrencia_fin: ''
+    recurrencia_tipo: '', recurrencia_fin: '',
+    tipo_consumo: 'contratado',
   })
   const [usuarios, setUsuarios] = useState([])
 
@@ -130,7 +131,7 @@ export default function FichaServicio() {
       })
       if (r.ok) {
         setModalTarea(false)
-        setFormTarea({ titulo: '', descripcion: '', asignado_id: '', asignado_nombre: '', fecha: '', hora_inicio: '', hora_fin: '', recurrencia_tipo: '', recurrencia_fin: '' })
+        setFormTarea({ titulo: '', descripcion: '', asignado_id: '', asignado_nombre: '', fecha: '', hora_inicio: '', hora_fin: '', recurrencia_tipo: '', recurrencia_fin: '', tipo_consumo: 'contratado' })
         cargar()
       }
     } catch (e) { console.error(e) }
@@ -174,6 +175,7 @@ export default function FichaServicio() {
       fecha:           t.fecha ?? '',
       asignado_id:     t.asignado_id ?? '',
       asignado_nombre: t.asignado_nombre ?? '',
+      tipo_consumo:    t.tipo_consumo ?? 'contratado',
     })
     setSubFormVisible(false)
     setSubFormData({})
@@ -200,6 +202,7 @@ export default function FichaServicio() {
           fecha:           formEditarTarea.fecha || null,
           asignado_id:     formEditarTarea.asignado_id     || null,
           asignado_nombre: formEditarTarea.asignado_nombre || null,
+          tipo_consumo:    formEditarTarea.tipo_consumo    ?? 'contratado',
         }),
       })
       if (r.ok) {
@@ -224,7 +227,8 @@ export default function FichaServicio() {
         tipo_recurso,
         fecha_inicio,
         fecha_fin,
-        dedicacion_pct:    parseInt(dedicacion_pct) || 100,
+        dedicacion_pct:       parseInt(dedicacion_pct) || 100,
+        incluir_fines_semana: subFormData.incluir_fines_semana ? 1 : 0,
       }
       setModalPropagar({ accion: 'agregar', recurso: payload, tarea: modalEditarTarea })
       return
@@ -241,7 +245,8 @@ export default function FichaServicio() {
           tipo_recurso,
           fecha_inicio,
           fecha_fin,
-          dedicacion_pct: parseInt(dedicacion_pct) || 100,
+          dedicacion_pct:       parseInt(dedicacion_pct) || 100,
+          incluir_fines_semana: subFormData.incluir_fines_semana ? 1 : 0,
         }),
       })
       if (r.ok) {
@@ -270,14 +275,19 @@ export default function FichaServicio() {
 
   async function guardarEdicionRecursoServicio(recursoId) {
     try {
-      await fetch(`${CP_API}/api/recursos/${recursoId}`, {
+      const r = await fetch(`${CP_API}/api/recursos/${recursoId}`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
         body: JSON.stringify(formRecurso),
       })
-      setRecursosEnTarea(prev => prev.map(r => r.id === recursoId ? { ...r, ...formRecurso } : r))
-      setEditandoRecurso(null)
-    } catch (e) { console.error(e) }
+      if (r.ok) {
+        setRecursosEnTarea(prev => prev.map(rec => rec.id === recursoId ? { ...rec, ...formRecurso } : rec))
+        setEditandoRecurso(null)
+      } else {
+        const err = await r.json().catch(() => ({}))
+        console.error('[guardarEdicionRecursoServicio] Error:', r.status, err)
+      }
+    } catch (e) { console.error('[guardarEdicionRecursoServicio]', e) }
   }
 
   if (loading) return <div className="text-center text-[#9aa1a9] py-12">Cargando...</div>
@@ -414,6 +424,15 @@ export default function FichaServicio() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-medium text-[#2C3A43] text-sm">{t.titulo}</p>
+                          {contrato?.modalidad === 'mixto' && (
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                              t.tipo_consumo === 'bajo_demanda'
+                                ? 'bg-amber-100 text-amber-700'
+                                : 'bg-blue-100 text-blue-700'
+                            }`}>
+                              {t.tipo_consumo === 'bajo_demanda' ? 'Bajo demanda' : 'Contratado'}
+                            </span>
+                          )}
                           {t.recurrencia_tipo && t.recurrencia_padre_id === null && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 font-medium">
                               🔁 {t.recurrencia_tipo}
@@ -723,6 +742,19 @@ export default function FichaServicio() {
                   />
                 </div>
               </div>
+              {contrato?.modalidad === 'mixto' && (
+                <div>
+                  <label className="text-sm text-[#5f6b75]">Tipo de consumo</label>
+                  <select
+                    value={formTarea.tipo_consumo}
+                    onChange={e => setFormTarea(f => ({ ...f, tipo_consumo: e.target.value }))}
+                    className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm"
+                  >
+                    <option value="contratado">Contratado (descuenta saldo)</option>
+                    <option value="bajo_demanda">Bajo demanda (para facturar)</option>
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="text-sm text-[#5f6b75]">Descripción</label>
                 <textarea
@@ -826,6 +858,20 @@ export default function FichaServicio() {
                 ))}
               </select>
             </div>
+
+            {contrato?.modalidad === 'mixto' && (
+              <div>
+                <label className="text-sm text-[#5f6b75]">Tipo de consumo</label>
+                <select
+                  value={formEditarTarea.tipo_consumo ?? 'contratado'}
+                  onChange={e => setFormEditarTarea(f => ({ ...f, tipo_consumo: e.target.value }))}
+                  className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="contratado">Contratado (descuenta saldo)</option>
+                  <option value="bajo_demanda">Bajo demanda (para facturar)</option>
+                </select>
+              </div>
+            )}
 
             {/* Recursos adicionales */}
             <div className="border-t border-[#E8EAEC] pt-3">
@@ -947,6 +993,15 @@ export default function FichaServicio() {
                         className="w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm" />
                     </div>
                   </div>
+                  <label className="flex items-center gap-2 text-xs text-[#5f6b75] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!subFormData.incluir_fines_semana}
+                      onChange={e => setSubFormData(f => ({ ...f, incluir_fines_semana: e.target.checked ? 1 : 0 }))}
+                      className="rounded"
+                    />
+                    Incluir fines de semana
+                  </label>
                   <div className="flex justify-end gap-2">
                     <button type="button" onClick={() => { setSubFormVisible(false); setSubFormData({}) }}
                       className="text-xs text-[#5f6b75] hover:text-[#2C3A43]">Cancelar</button>
