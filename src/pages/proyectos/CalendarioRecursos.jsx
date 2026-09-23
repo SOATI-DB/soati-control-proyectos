@@ -14,15 +14,18 @@ const TIPOS = [
   { id: 'tecnicos',   label: 'Técnicos' },  // agrupa ensamble + campo
 ]
 
-// Color único por proyecto generado desde su código — sin límite de proyectos
-// Excluye hue 0–15 y 345–360 (rojos) reservados para alertas
-function colorProyecto(codigo) {
-  let hash = 0
-  for (const c of (codigo || '')) hash = (hash * 31 + c.charCodeAt(0)) >>> 0
-  const hue = 16 + (hash % 329)       // 16–344: excluye rojos
-  const sat = 45 + ((hash >> 8) % 30) // 45–74%
-  const lit = 35 + ((hash >> 16) % 20) // 35–54%
-  return `hsl(${hue}, ${sat}%, ${lit}%)`
+// Fallback: golden angle por índice en lista ordenada alfabéticamente
+function calcularColorGoldenAngle(idx) {
+  let hue = (idx * 137.5) % 360
+  if (hue <= 15 || hue >= 345) hue = hue + 16
+  return `hsl(${Math.round(hue)}, 55%, 42%)`
+}
+
+// Color del proyecto — usa BD si existe, golden angle por índice como fallback
+function colorProyecto(codigo, colorBD, todosCodigos) {
+  if (colorBD) return colorBD
+  const idx = [...todosCodigos].sort().indexOf(codigo)
+  return calcularColorGoldenAngle(idx >= 0 ? idx : 0)
 }
 
 
@@ -156,6 +159,8 @@ export default function CalendarioRecursos() {
             proyecto_id:            asig.proyecto_id      ?? null,
             tarea_id:               asig.tarea_id         ?? null,
             servicio_tarea_id:      asig.servicio_tarea_id ?? null,
+            proyecto_color:    asig.proyecto_color ?? null,
+            sv_color:          asig.sv_color       ?? null,
           }
         })
         setAsignaciones(asigBase)
@@ -328,9 +333,14 @@ export default function CalendarioRecursos() {
                       const esPrioridadAlta  = asig.prioridad === 'alta' || asig.prioridad === 'critica'
                       const colorAlerta      = '#dc2626'
                       // Barra roja solo por fecha fija — NO por prioridad ni SLA
-                      const color            = esFechaFija
+                      // Recopilar todos los códigos visibles para el fallback de golden angle
+                      const todosCodigos = new Set(asignaciones.map(a => a.codigo).filter(Boolean))
+                      const colorBD      = asig.tipo === 'servicio'
+                        ? (asig.sv_color ?? null)
+                        : (asig.proyecto_color ?? null)
+                      const color        = esFechaFija
                         ? colorAlerta
-                        : asig.tipo === 'servicio' ? '#EE7623' : colorProyecto(asig.codigo)
+                        : colorProyecto(asig.codigo, colorBD, todosCodigos)
                       // Texto rojo en etiqueta si prioridad alta (independiente del color de barra)
                       const fechaLimite      = asig.fecha_limite ? new Date(asig.fecha_limite) : null
                       const diasRestantes    = fechaLimite ? Math.ceil((fechaLimite - hoy) / 86400000) : null
