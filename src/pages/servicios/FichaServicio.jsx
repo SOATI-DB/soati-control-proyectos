@@ -163,7 +163,13 @@ export default function FichaServicio() {
   }
 
   async function abrirEditarTarea(t) {
-    setFormEditarTarea({ titulo: t.titulo, fecha: t.fecha ?? '' })
+    if (usuarios.length === 0) await cargarUsuarios()
+    setFormEditarTarea({
+      titulo:          t.titulo,
+      fecha:           t.fecha ?? '',
+      asignado_id:     t.asignado_id ?? '',
+      asignado_nombre: t.asignado_nombre ?? '',
+    })
     setModalEditarTarea(t)
   }
 
@@ -175,8 +181,10 @@ export default function FichaServicio() {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
         body:    JSON.stringify({
-          titulo: formEditarTarea.titulo.trim(),
-          fecha:  formEditarTarea.fecha || null,
+          titulo:          formEditarTarea.titulo.trim(),
+          fecha:           formEditarTarea.fecha || null,
+          asignado_id:     formEditarTarea.asignado_id     || null,
+          asignado_nombre: formEditarTarea.asignado_nombre || null,
         }),
       })
       if (r.ok) {
@@ -705,6 +713,27 @@ export default function FichaServicio() {
                 onChange={e => setFormEditarTarea(f => ({ ...f, fecha: e.target.value }))}
                 className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm"
               />
+            </div>
+
+            <div>
+              <label className="text-sm text-[#5f6b75]">Recurso asignado</label>
+              <select
+                value={formEditarTarea.asignado_id ?? ''}
+                onChange={e => {
+                  const u = usuarios.find(u => String(u.id) === e.target.value)
+                  setFormEditarTarea(f => ({
+                    ...f,
+                    asignado_id:     e.target.value,
+                    asignado_nombre: u?.nombre ?? '',
+                  }))
+                }}
+                className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm"
+              >
+                <option value="">Sin asignar</option>
+                {usuarios.map(u => (
+                  <option key={u.id} value={u.id}>{u.nombre}</option>
+                ))}
+              </select>
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
