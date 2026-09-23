@@ -17,8 +17,14 @@ const TIPOS = [
 // Fallback: golden angle por índice en lista ordenada alfabéticamente
 function calcularColorGoldenAngle(idx) {
   let hue = (idx * 137.5) % 360
-  if (hue <= 15 || hue >= 345) hue = hue + 16
-  return `hsl(${Math.round(hue)}, 55%, 42%)`
+  if (hue < 20 || hue > 340) hue = (hue + 20) % 360
+
+  const sats = [55, 75, 45]
+  const lits = [42, 35, 50]
+  const sat  = sats[idx % 3]
+  const lit  = lits[idx % 3]
+
+  return `hsl(${Math.round(hue)}, ${sat}%, ${lit}%)`
 }
 
 // Color del proyecto — usa BD si existe, golden angle por índice como fallback
