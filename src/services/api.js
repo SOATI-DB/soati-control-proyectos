@@ -187,10 +187,12 @@ export const getRecursosDisponibles = (tipo) =>
   fetch(`${BASE}/api/recursos/disponibles${tipo ? `?tipo=${tipo}` : ''}`,
     { headers: headers() }).then(r => r.json())
 
-export const verificarDisponibilidad = (usuario_id, fecha_inicio, fecha_fin, tarea_id, proyecto_id) => {
+/** Verifica si un usuario tiene solapamiento de fechas contra cualquier asignación existente (proyecto o servicio). */
+export const verificarDisponibilidad = (usuario_id, fecha_inicio, fecha_fin, tarea_id, proyecto_id, servicio_tarea_id) => {
   const params = new URLSearchParams({ usuario_id, fecha_inicio, fecha_fin })
   if (tarea_id) params.append('tarea_id', tarea_id)
   if (proyecto_id) params.append('proyecto_id', proyecto_id)
+  if (servicio_tarea_id) params.append('servicio_tarea_id', servicio_tarea_id)
   return fetch(`${BASE}/api/recursos/disponibilidad?${params}`,
     { headers: headers() }).then(r => r.json())
 }

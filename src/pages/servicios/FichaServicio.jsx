@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth.js'
-import { getRecursosDisponibles } from '../../services/api.js'
+import { getRecursosDisponibles, verificarDisponibilidad } from '../../services/api.js'
 
 const CP_API    = import.meta.env.VITE_API_URL ?? 'http://localhost:3011'
 const TOKEN_KEY = 'soati_shell_token'
@@ -30,6 +30,8 @@ export default function FichaServicio() {
   const [recursosEnTarea, setRecursosEnTarea]   = useState([])
   const [subFormVisible, setSubFormVisible]     = useState(false)
   const [subFormData, setSubFormData]           = useState({})
+  const [subDispData, setSubDispData]           = useState(null)
+  const [subVerificando, setSubVerificando]     = useState(false)
   const [editandoRecurso, setEditandoRecurso]   = useState(null)
   const [formRecurso, setFormRecurso]           = useState({})
   const [formTarea, setFormTarea]               = useState({
@@ -63,6 +65,16 @@ export default function FichaServicio() {
       const data = await getRecursosDisponibles()
       setUsuarios(Array.isArray(data) ? data : [])
     } catch { setUsuarios([]) }
+  }
+
+  /** Verifica disponibilidad del recurso seleccionado contra cualquier asignación existente (proyecto o servicio). */
+  async function verificarSubForm(form) {
+    const { recurso_id, fecha_inicio, fecha_fin } = form
+    if (!recurso_id || !fecha_inicio || !fecha_fin) { setSubDispData(null); return }
+    setSubVerificando(true)
+    const r = await verificarDisponibilidad(recurso_id, fecha_inicio, fecha_fin, null, null, modalEditarTarea?.id || null)
+    setSubDispData(r)
+    setSubVerificando(false)
   }
 
   /** Abre el modal de edición del contrato precargando los datos actuales en el formulario. */
@@ -175,6 +187,28 @@ export default function FichaServicio() {
     } catch (e) { console.error(e) }
   }
 
+  /** Elimina una tarea de servicio tras confirmación — desactiva recursos y cancela ticket asociado en el backend. */
+  async function eliminarTarea(tarea) {
+    if (!window.confirm(`¿Eliminar la tarea "${tarea.titulo}"? Esto desactivará los recursos asignados y cancelará el ticket asociado si existe. Esta acción no se puede deshacer desde aquí.`)) {
+      return
+    }
+    try {
+      const r = await fetch(`${CP_API}/api/servicios/tareas/${tarea.id}`, {
+        method:  'DELETE',
+        headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
+      })
+      if (r.ok) {
+        cargar()
+      } else {
+        const err = await r.json().catch(() => ({}))
+        alert(err.error || 'Error al eliminar la tarea')
+      }
+    } catch (e) {
+      console.error('[eliminarTarea]', e)
+      alert('Error al eliminar la tarea')
+    }
+  }
+
   /** Abre el modal de edición de una tarea, carga sus recursos adicionales y pre-carga usuarios si es necesario. */
   async function abrirEditarTarea(t) {
     if (usuarios.length === 0) await cargarUsuarios()
@@ -187,6 +221,7 @@ export default function FichaServicio() {
     })
     setSubFormVisible(false)
     setSubFormData({})
+    setSubDispData(null)
     setEditandoRecurso(null)
     setModalEditarTarea(t)
     try {
@@ -239,6 +274,8 @@ export default function FichaServicio() {
         fecha_fin,
         dedicacion_pct:       parseInt(dedicacion_pct) || 100,
         incluir_fines_semana: subFormData.incluir_fines_semana ? 1 : 0,
+        forzado:              subFormData.forzar ? 1 : 0,
+        conflicto_nota:       subFormData.conflicto_nota ?? null,
       }
       setModalPropagar({ accion: 'agregar', recurso: payload, tarea: modalEditarTarea })
       return
@@ -257,6 +294,8 @@ export default function FichaServicio() {
           fecha_fin,
           dedicacion_pct:       parseInt(dedicacion_pct) || 100,
           incluir_fines_semana: subFormData.incluir_fines_semana ? 1 : 0,
+          forzado:              subFormData.forzar ? 1 : 0,
+          conflicto_nota:       subFormData.conflicto_nota ?? null,
         }),
       })
       if (r.ok) {
@@ -461,6 +500,14 @@ export default function FichaServicio() {
                               className="text-[10px] text-[#4E738A] hover:underline shrink-0"
                             >
                               Editar
+                            </button>
+                          )}
+                          {puedeGestionar && (
+                            <button
+                              onClick={() => eliminarTarea(t)}
+                              className="text-[10px] text-red-500 hover:underline shrink-0"
+                            >
+                              Eliminar
                             </button>
                           )}
                         </div>
@@ -897,6 +944,7 @@ export default function FichaServicio() {
                       const fechaTarea = modalEditarTarea?.fecha?.slice(0, 10) || ''
                       setSubFormVisible(true)
                       setSubFormData({ fecha_inicio: fechaTarea, fecha_fin: fechaTarea })
+                      setSubDispData(null)
                     }}
                     className="text-xs text-[#4E738A] hover:underline"
                   >
@@ -973,7 +1021,7 @@ export default function FichaServicio() {
                   <div>
                     <label className="block text-xs text-[#5f6b75] mb-1">Tipo de recurso</label>
                     <select value={subFormData.tipo_recurso || ''}
-                      onChange={e => setSubFormData(f => ({ ...f, tipo_recurso: e.target.value, recurso_id: '' }))}
+                      onChange={e => { setSubFormData(f => ({ ...f, tipo_recurso: e.target.value, recurso_id: '' })); setSubDispData(null) }}
                       className="w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm">
                       <option value="">— Seleccionar —</option>
                       <option value="ingenieria">Ingeniería</option>
@@ -987,7 +1035,7 @@ export default function FichaServicio() {
                     <div>
                       <label className="block text-xs text-[#5f6b75] mb-1">Recurso</label>
                       <select value={subFormData.recurso_id || ''}
-                        onChange={e => setSubFormData(f => ({ ...f, recurso_id: e.target.value }))}
+                        onChange={e => { const v = e.target.value; setSubFormData(f => ({ ...f, recurso_id: v })); verificarSubForm({ ...subFormData, recurso_id: v }) }}
                         className="w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm">
                         <option value="">— Seleccionar —</option>
                         {usuarios.filter(r => r.tipos?.includes(subFormData.tipo_recurso)).map(r => (
@@ -1019,8 +1067,34 @@ export default function FichaServicio() {
                     />
                     Incluir fines de semana
                   </label>
+                  {subVerificando && <p className="text-xs text-gray-400">Verificando disponibilidad...</p>}
+
+                  {subDispData && !subVerificando && (
+                    subDispData.disponible
+                      ? <div className="flex items-center gap-1.5 text-xs text-[#2e9e5b] bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                          <svg viewBox="0 0 20 20" className="w-3.5 h-3.5 fill-current shrink-0"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                          Disponible
+                        </div>
+                      : <div className="text-xs bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 space-y-1">
+                          <p className="font-medium text-orange-700">Conflicto detectado:</p>
+                          {subDispData.solapamientos.map((s, i) => (
+                            <p key={i} className="text-orange-600">
+                              {s.proyecto_codigo} {s.pm_nombre ? `(${s.pm_nombre})` : ''} — {s.tarea} · {s.dedicacion_pct}%
+                            </p>
+                          ))}
+                          <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                            <input type="checkbox" checked={!!subFormData.forzar} onChange={e => setSubFormData(f => ({ ...f, forzar: e.target.checked }))} className="accent-[#EE7623]" />
+                            <span className="text-orange-700 font-medium">Forzar asignación</span>
+                          </label>
+                          {subFormData.forzar && (
+                            <div><label className="block text-xs text-gray-500 mb-1">Nota para el PM</label>
+                              <input value={subFormData.conflicto_nota || ''} onChange={e => setSubFormData(f => ({ ...f, conflicto_nota: e.target.value }))} className="w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm" placeholder="Razón del solapamiento..." /></div>
+                          )}
+                        </div>
+                  )}
+
                   <div className="flex justify-end gap-2">
-                    <button type="button" onClick={() => { setSubFormVisible(false); setSubFormData({}) }}
+                    <button type="button" onClick={() => { setSubFormVisible(false); setSubFormData({}); setSubDispData(null) }}
                       className="text-xs text-[#5f6b75] hover:text-[#2C3A43]">Cancelar</button>
                     <button type="button" onClick={agregarRecursoServicio}
                       className="text-xs bg-[#4E738A] text-white px-3 py-1 rounded hover:bg-[#3d5c70]">Agregar</button>
@@ -1070,6 +1144,7 @@ export default function FichaServicio() {
                         setRecursosEnTarea(list => [...list, nuevo])
                         setSubFormVisible(false)
                         setSubFormData({})
+                        setSubDispData(null)
                       }
                     } catch (e) { console.error('[modalPropagar agregar instancia]', e) }
                     setModalPropagar(null)
@@ -1124,6 +1199,7 @@ export default function FichaServicio() {
                       if (r.ok) setRecursosEnTarea(await r.json())
                       setSubFormVisible(false)
                       setSubFormData({})
+                      setSubDispData(null)
                     } catch (e) { console.error('[modalPropagar agregar serie]', e) }
                     setModalPropagar(null)
                   } else if (modalPropagar.accion === 'eliminar') {
