@@ -216,3 +216,15 @@ export const eliminarRecurso = (id) =>
 
 export const getRecursosTarea = (tareaId) =>
   fetch(`${BASE}/api/recursos/tarea/${tareaId}`, { headers: headers() }).then(r => r.json())
+
+/** Cierra el ticket padre de una tarea de servicio (recurso principal) con hora/nota. */
+export const cerrarTicketPrincipal = (tareaId, body) =>
+  fetch(`${BASE}/api/servicios/tareas/${tareaId}/cerrar`, {
+    method: 'POST', headers: headers(), body: JSON.stringify(body)
+  }).then(r => r.json().then(data => ({ ok: r.ok, data })))
+
+/** Cierra el ticket hijo de un recurso adicional con hora/nota. */
+export const cerrarTicketRecurso = (recursoId, body) =>
+  fetch(`${BASE}/api/recursos/${recursoId}/cerrar`, {
+    method: 'POST', headers: headers(), body: JSON.stringify(body)
+  }).then(r => r.json().then(data => ({ ok: r.ok, data })))

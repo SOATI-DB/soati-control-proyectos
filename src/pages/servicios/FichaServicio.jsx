@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth.js'
-import { getRecursosDisponibles, verificarDisponibilidad } from '../../services/api.js'
+import { getRecursosDisponibles, verificarDisponibilidad, cerrarTicketPrincipal, cerrarTicketRecurso } from '../../services/api.js'
 
 const CP_API    = import.meta.env.VITE_API_URL ?? 'http://localhost:3011'
 const TOKEN_KEY = 'soati_shell_token'
@@ -34,6 +34,11 @@ export default function FichaServicio() {
   const [subVerificando, setSubVerificando]     = useState(false)
   const [errorRecurso, setErrorRecurso]         = useState('')
   const [confirmandoEliminarTarea, setConfirmandoEliminarTarea] = useState(null)
+  const [errorEliminarTarea, setErrorEliminarTarea] = useState('')
+  const [cerrandoRecurso, setCerrandoRecurso] = useState(null) // { tipo: 'principal'|'adicional', id, titulo } | null
+  const [formCierre, setFormCierre] = useState({ hora_inicio: '', hora_fin: '', nota_cierre: '' })
+  const [guardandoCierre, setGuardandoCierre] = useState(false)
+  const [errorCierre, setErrorCierre] = useState('')
   const [editandoRecurso, setEditandoRecurso]   = useState(null)
   const [formRecurso, setFormRecurso]           = useState({})
   const [formTarea, setFormTarea]               = useState({
@@ -192,20 +197,22 @@ export default function FichaServicio() {
 
   /** Elimina una tarea de servicio — desactiva recursos y cancela ticket asociado en el backend. */
   async function eliminarTarea(tarea) {
+    setErrorEliminarTarea('')
     try {
       const r = await fetch(`${CP_API}/api/servicios/tareas/${tarea.id}`, {
         method:  'DELETE',
         headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
       })
       if (r.ok) {
+        setConfirmandoEliminarTarea(null)
         cargar()
       } else {
         const err = await r.json().catch(() => ({}))
-        alert(err.error || 'Error al eliminar la tarea')
+        setErrorEliminarTarea(err.error || 'Error al eliminar la tarea')
       }
     } catch (e) {
       console.error('[eliminarTarea]', e)
-      alert('Error al eliminar la tarea')
+      setErrorEliminarTarea('Error al eliminar la tarea')
     }
   }
 
@@ -328,6 +335,38 @@ export default function FichaServicio() {
       })
       setRecursosEnTarea(list => list.filter(x => x.id !== recursoId))
     } catch (e) { console.error(e) }
+  }
+
+  /** Cierra el ticket del recurso seleccionado (principal o adicional) con hora inicio/fin y nota. */
+  async function confirmarCierre() {
+    if (!formCierre.hora_inicio || !formCierre.hora_fin || !formCierre.nota_cierre.trim()) {
+      setErrorCierre('Hora inicio, hora fin y nota de cierre son obligatorios')
+      return
+    }
+    setGuardandoCierre(true)
+    setErrorCierre('')
+    try {
+      const body = {
+        hora_inicio: formCierre.hora_inicio,
+        hora_fin:    formCierre.hora_fin,
+        nota_cierre: formCierre.nota_cierre.trim(),
+      }
+      const { ok, data } = cerrandoRecurso.tipo === 'principal'
+        ? await cerrarTicketPrincipal(modalEditarTarea.id, body)
+        : await cerrarTicketRecurso(cerrandoRecurso.id, body)
+
+      if (ok) {
+        setCerrandoRecurso(null)
+        setFormCierre({ hora_inicio: '', hora_fin: '', nota_cierre: '' })
+        cargar()
+      } else {
+        setErrorCierre(data.error || 'Error al cerrar el ticket')
+      }
+    } catch (e) {
+      setErrorCierre('Error al cerrar el ticket')
+    } finally {
+      setGuardandoCierre(false)
+    }
   }
 
   /** Actualiza fechas y dedicación de un recurso existente vía PATCH. */
@@ -511,7 +550,7 @@ export default function FichaServicio() {
                           )}
                           {puedeGestionar && (
                             <button
-                              onClick={() => setConfirmandoEliminarTarea(t)}
+                              onClick={() => { setConfirmandoEliminarTarea(t); setErrorEliminarTarea('') }}
                               className="text-[10px] text-red-500 hover:underline shrink-0"
                             >
                               Eliminar
@@ -1037,6 +1076,17 @@ export default function FichaServicio() {
                               }}
                               className="text-xs text-[#4E738A] hover:underline">Editar</button>
                             <button type="button"
+                              onClick={() => {
+                                const esPrincipal = String(r.usuario_id) === String(modalEditarTarea?.asignado_id)
+                                setCerrandoRecurso({ tipo: esPrincipal ? 'principal' : 'adicional', id: r.id, titulo: r.usuario_nombre })
+                                setFormCierre({ hora_inicio: '', hora_fin: '', nota_cierre: '' })
+                                setErrorCierre('')
+                              }}
+                              className="text-xs text-emerald-600 hover:underline"
+                            >
+                              Cerrar
+                            </button>
+                            <button type="button"
                               onClick={() => eliminarRecursoServicio(r.id)}
                               className="text-[#9aa1a9] hover:text-red-500 text-lg leading-none">×</button>
                           </div>
@@ -1161,18 +1211,21 @@ export default function FichaServicio() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
             <h3 className="font-semibold text-[#2C3A43] mb-2">Eliminar tarea</h3>
-            <p className="text-sm text-[#5f6b75] mb-5">
+            <p className="text-sm text-[#5f6b75] mb-4">
               ¿Eliminar la tarea "{confirmandoEliminarTarea.titulo}"? Esto desactivará los recursos asignados y cancelará el ticket asociado si existe. Esta acción no se puede deshacer desde aquí.
             </p>
+            {errorEliminarTarea && (
+              <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-2 py-1.5 mb-3">{errorEliminarTarea}</p>
+            )}
             <div className="flex justify-end gap-2">
               <button
-                onClick={() => setConfirmandoEliminarTarea(null)}
+                onClick={() => { setConfirmandoEliminarTarea(null); setErrorEliminarTarea('') }}
                 className="px-4 py-2 text-sm text-[#5f6b75] hover:text-[#2C3A43]"
               >
                 Cancelar
               </button>
               <button
-                onClick={() => { const t = confirmandoEliminarTarea; setConfirmandoEliminarTarea(null); eliminarTarea(t) }}
+                onClick={() => eliminarTarea(confirmandoEliminarTarea)}
                 className="px-4 py-2 bg-[#d9534f] hover:bg-red-700 text-white text-sm rounded-lg"
               >
                 Eliminar
@@ -1296,6 +1349,54 @@ export default function FichaServicio() {
               </button>
               <button onClick={() => setModalPropagar(null)} className="text-sm text-[#5f6b75] hover:text-[#2C3A43] mt-1">
                 Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cerrandoRecurso && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+            <h3 className="font-semibold text-[#2C3A43] mb-2">Cerrar trabajo — {cerrandoRecurso.titulo}</h3>
+            <p className="text-sm text-[#5f6b75] mb-4">
+              {cerrandoRecurso.tipo === 'principal'
+                ? 'Esto cierra el ticket principal de la tarea.'
+                : 'Esto cierra el ticket hijo de este recurso.'}
+            </p>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-[#5f6b75]">Hora inicio *</label>
+                  <input type="datetime-local" value={formCierre.hora_inicio}
+                    onChange={e => setFormCierre(f => ({ ...f, hora_inicio: e.target.value }))}
+                    className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs text-[#5f6b75]">Hora fin *</label>
+                  <input type="datetime-local" value={formCierre.hora_fin}
+                    onChange={e => setFormCierre(f => ({ ...f, hora_fin: e.target.value }))}
+                    className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-[#5f6b75]">Nota de cierre *</label>
+                <textarea rows={3} value={formCierre.nota_cierre}
+                  onChange={e => setFormCierre(f => ({ ...f, nota_cierre: e.target.value }))}
+                  className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm"
+                  placeholder="Trabajo realizado..." />
+              </div>
+              {errorCierre && (
+                <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-2 py-1.5">{errorCierre}</p>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => setCerrandoRecurso(null)} className="px-4 py-2 text-sm text-[#5f6b75] hover:text-[#2C3A43]">
+                Cancelar
+              </button>
+              <button onClick={confirmarCierre} disabled={guardandoCierre}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm rounded-lg disabled:opacity-50">
+                {guardandoCierre ? 'Cerrando...' : 'Confirmar cierre'}
               </button>
             </div>
           </div>
