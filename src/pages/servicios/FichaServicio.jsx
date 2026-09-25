@@ -25,18 +25,20 @@ export default function FichaServicio() {
   const [modalTarea, setModalTarea]             = useState(false)
   const [modalEditarTarea, setModalEditarTarea] = useState(null)
   const [modalPropagar, setModalPropagar]       = useState(null) // { tarea, campo, valor }
-  const [formEditarTarea, setFormEditarTarea]   = useState({ titulo: '', fecha: '' })
+  const [formEditarTarea, setFormEditarTarea]   = useState({ titulo: '', fecha: '', fecha_fin: '' })
   const [guardandoEditarTarea, setGuardandoEditarTarea] = useState(false)
   const [recursosEnTarea, setRecursosEnTarea]   = useState([])
   const [subFormVisible, setSubFormVisible]     = useState(false)
   const [subFormData, setSubFormData]           = useState({})
   const [subDispData, setSubDispData]           = useState(null)
   const [subVerificando, setSubVerificando]     = useState(false)
+  const [errorRecurso, setErrorRecurso]         = useState('')
+  const [confirmandoEliminarTarea, setConfirmandoEliminarTarea] = useState(null)
   const [editandoRecurso, setEditandoRecurso]   = useState(null)
   const [formRecurso, setFormRecurso]           = useState({})
   const [formTarea, setFormTarea]               = useState({
     titulo: '', descripcion: '', asignado_id: '', asignado_nombre: '',
-    fecha: '', hora_inicio: '', hora_fin: '',
+    fecha: '', fecha_fin: '', hora_inicio: '', hora_fin: '',
     recurrencia_tipo: '', recurrencia_fin: '',
     tipo_consumo: 'contratado',
   })
@@ -140,6 +142,7 @@ export default function FichaServicio() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
         body: JSON.stringify({
           ...formTarea,
+          fecha_fin:        formTarea.fecha_fin        || null,
           hora_inicio:      formTarea.hora_inicio      || null,
           hora_fin:         formTarea.hora_fin         || null,
           recurrencia_tipo: formTarea.recurrencia_tipo || null,
@@ -148,7 +151,7 @@ export default function FichaServicio() {
       })
       if (r.ok) {
         setModalTarea(false)
-        setFormTarea({ titulo: '', descripcion: '', asignado_id: '', asignado_nombre: '', fecha: '', hora_inicio: '', hora_fin: '', recurrencia_tipo: '', recurrencia_fin: '', tipo_consumo: 'contratado' })
+        setFormTarea({ titulo: '', descripcion: '', asignado_id: '', asignado_nombre: '', fecha: '', fecha_fin: '', hora_inicio: '', hora_fin: '', recurrencia_tipo: '', recurrencia_fin: '', tipo_consumo: 'contratado' })
         cargar()
       }
     } catch (e) { console.error(e) }
@@ -187,11 +190,8 @@ export default function FichaServicio() {
     } catch (e) { console.error(e) }
   }
 
-  /** Elimina una tarea de servicio tras confirmación — desactiva recursos y cancela ticket asociado en el backend. */
+  /** Elimina una tarea de servicio — desactiva recursos y cancela ticket asociado en el backend. */
   async function eliminarTarea(tarea) {
-    if (!window.confirm(`¿Eliminar la tarea "${tarea.titulo}"? Esto desactivará los recursos asignados y cancelará el ticket asociado si existe. Esta acción no se puede deshacer desde aquí.`)) {
-      return
-    }
     try {
       const r = await fetch(`${CP_API}/api/servicios/tareas/${tarea.id}`, {
         method:  'DELETE',
@@ -215,6 +215,7 @@ export default function FichaServicio() {
     setFormEditarTarea({
       titulo:          t.titulo,
       fecha:           t.fecha ?? '',
+      fecha_fin:       t.fecha_fin ?? '',
       asignado_id:     t.asignado_id ?? '',
       asignado_nombre: t.asignado_nombre ?? '',
       tipo_consumo:    t.tipo_consumo ?? 'contratado',
@@ -243,7 +244,8 @@ export default function FichaServicio() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
         body:    JSON.stringify({
           titulo:          formEditarTarea.titulo.trim(),
-          fecha:           formEditarTarea.fecha || null,
+          fecha:           formEditarTarea.fecha     || null,
+          fecha_fin:       formEditarTarea.fecha_fin || null,
           asignado_id:     formEditarTarea.asignado_id     || null,
           asignado_nombre: formEditarTarea.asignado_nombre || null,
           tipo_consumo:    formEditarTarea.tipo_consumo    ?? 'contratado',
@@ -260,6 +262,7 @@ export default function FichaServicio() {
 
   /** Agrega un recurso adicional a la tarea; si la tarea es recurrente abre el modal de propagación para preguntar el alcance. */
   async function agregarRecursoServicio() {
+    setErrorRecurso('')
     const { tipo_recurso, recurso_id, fecha_inicio, fecha_fin, dedicacion_pct } = subFormData
     if (!recurso_id || !tipo_recurso || !fecha_inicio || !fecha_fin) return
     const recurso = usuarios.find(r => String(r.id) === String(recurso_id))
@@ -303,6 +306,10 @@ export default function FichaServicio() {
         setRecursosEnTarea(list => [...list, nuevo])
         setSubFormVisible(false)
         setSubFormData({})
+        setErrorRecurso('')
+      } else {
+        const err = await r.json().catch(() => ({}))
+        setErrorRecurso(err.error || 'Error al agregar el recurso')
       }
     } catch (e) { console.error(e) }
   }
@@ -504,7 +511,7 @@ export default function FichaServicio() {
                           )}
                           {puedeGestionar && (
                             <button
-                              onClick={() => eliminarTarea(t)}
+                              onClick={() => setConfirmandoEliminarTarea(t)}
                               className="text-[10px] text-red-500 hover:underline shrink-0"
                             >
                               Eliminar
@@ -536,7 +543,8 @@ export default function FichaServicio() {
                         )}
                         {t.fecha && (
                           <p className="text-xs text-[#9aa1a9] mt-0.5">
-                            {t.fecha}{t.hora_inicio ? ` · ${t.hora_inicio}${t.hora_fin ? ` - ${t.hora_fin}` : ''}` : ''}
+                            {t.fecha_fin && t.fecha_fin !== t.fecha ? `${t.fecha} → ${t.fecha_fin}` : t.fecha}
+                            {(!t.fecha_fin || t.fecha_fin === t.fecha) && t.hora_inicio ? ` · ${t.hora_inicio}${t.hora_fin ? ` - ${t.hora_fin}` : ''}` : ''}
                           </p>
                         )}
                       </div>
@@ -773,7 +781,7 @@ export default function FichaServicio() {
                 </select>
               </div>
               <div>
-                <label className="text-sm text-[#5f6b75]">Fecha</label>
+                <label className="text-sm text-[#5f6b75]">Fecha inicio</label>
                 <input
                   type="date" lang="es-CR"
                   value={formTarea.fecha}
@@ -781,6 +789,17 @@ export default function FichaServicio() {
                   className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm"
                 />
               </div>
+              <div>
+                <label className="text-sm text-[#5f6b75]">Fecha fin (opcional — para tareas de varios días)</label>
+                <input
+                  type="date"
+                  value={formTarea.fecha_fin}
+                  min={formTarea.fecha || undefined}
+                  onChange={e => setFormTarea(f => ({ ...f, fecha_fin: e.target.value }))}
+                  className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              {(!formTarea.fecha_fin || formTarea.fecha_fin === formTarea.fecha) && (
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-sm text-[#5f6b75]">Hora inicio (opcional)</label>
@@ -801,6 +820,7 @@ export default function FichaServicio() {
                   />
                 </div>
               </div>
+              )}
               {contrato?.modalidad === 'mixto' && (
                 <div>
                   <label className="text-sm text-[#5f6b75]">Tipo de consumo</label>
@@ -875,7 +895,7 @@ export default function FichaServicio() {
       {/* Modal edición de tarea */}
       {modalEditarTarea && (
         <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <h3 className="font-semibold text-[#2C3A43]">Editar tarea</h3>
 
             <div>
@@ -888,11 +908,22 @@ export default function FichaServicio() {
             </div>
 
             <div>
-              <label className="text-sm text-[#5f6b75]">Fecha</label>
+              <label className="text-sm text-[#5f6b75]">Fecha inicio</label>
               <input
                 type="date"
                 value={formEditarTarea.fecha}
                 onChange={e => setFormEditarTarea(f => ({ ...f, fecha: e.target.value }))}
+                className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm text-[#5f6b75]">Fecha fin (opcional — para tareas de varios días)</label>
+              <input
+                type="date"
+                value={formEditarTarea.fecha_fin}
+                min={formEditarTarea.fecha || undefined}
+                onChange={e => setFormEditarTarea(f => ({ ...f, fecha_fin: e.target.value }))}
                 className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm"
               />
             </div>
@@ -1093,6 +1124,9 @@ export default function FichaServicio() {
                         </div>
                   )}
 
+                  {errorRecurso && (
+                    <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-2 py-1.5">{errorRecurso}</p>
+                  )}
                   <div className="flex justify-end gap-2">
                     <button type="button" onClick={() => { setSubFormVisible(false); setSubFormData({}); setSubDispData(null) }}
                       className="text-xs text-[#5f6b75] hover:text-[#2C3A43]">Cancelar</button>
@@ -1122,12 +1156,41 @@ export default function FichaServicio() {
         </div>
       )}
 
+      {/* Modal confirmación eliminar tarea */}
+      {confirmandoEliminarTarea && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+            <h3 className="font-semibold text-[#2C3A43] mb-2">Eliminar tarea</h3>
+            <p className="text-sm text-[#5f6b75] mb-5">
+              ¿Eliminar la tarea "{confirmandoEliminarTarea.titulo}"? Esto desactivará los recursos asignados y cancelará el ticket asociado si existe. Esta acción no se puede deshacer desde aquí.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmandoEliminarTarea(null)}
+                className="px-4 py-2 text-sm text-[#5f6b75] hover:text-[#2C3A43]"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => { const t = confirmandoEliminarTarea; setConfirmandoEliminarTarea(null); eliminarTarea(t) }}
+                className="px-4 py-2 bg-[#d9534f] hover:bg-red-700 text-white text-sm rounded-lg"
+              >
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal propagación a serie */}
       {modalPropagar && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
             <h3 className="font-semibold text-[#2C3A43] mb-2">Tarea recurrente</h3>
             <p className="text-sm text-[#5f6b75] mb-5">¿Modificar solo esta instancia o toda la serie?</p>
+            {errorRecurso && (
+              <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-2 py-1.5 mb-2">{errorRecurso}</p>
+            )}
             <div className="flex flex-col gap-2">
               <button
                 onClick={async () => {
@@ -1145,6 +1208,9 @@ export default function FichaServicio() {
                         setSubFormVisible(false)
                         setSubFormData({})
                         setSubDispData(null)
+                      } else {
+                        const err = await r.json().catch(() => ({}))
+                        setErrorRecurso(err.error || 'Error al agregar el recurso')
                       }
                     } catch (e) { console.error('[modalPropagar agregar instancia]', e) }
                     setModalPropagar(null)
@@ -1191,6 +1257,9 @@ export default function FichaServicio() {
                             }),
                           }).catch(() => {})
                         }
+                      } else {
+                        const err = await instRes.json().catch(() => ({}))
+                        setErrorRecurso(err.error || 'Error al agregar el recurso')
                       }
                       // Recargar recursos de la tarea actual
                       const r = await fetch(`${CP_API}/api/recursos/servicio-tarea/${modalPropagar.tarea.id}`, {
