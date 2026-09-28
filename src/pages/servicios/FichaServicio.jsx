@@ -25,7 +25,7 @@ export default function FichaServicio() {
   const [modalTarea, setModalTarea]             = useState(false)
   const [modalEditarTarea, setModalEditarTarea] = useState(null)
   const [modalPropagar, setModalPropagar]       = useState(null) // { tarea, campo, valor }
-  const [formEditarTarea, setFormEditarTarea]   = useState({ titulo: '', fecha: '', fecha_fin: '' })
+  const [formEditarTarea, setFormEditarTarea]   = useState({ titulo: '', fecha: '', fecha_fin: '', asignado_tipo_recurso: 'ingenieria', _requiereTipoManual: false })
   const [guardandoEditarTarea, setGuardandoEditarTarea] = useState(false)
   const [recursosEnTarea, setRecursosEnTarea]   = useState([])
   const [subFormVisible, setSubFormVisible]     = useState(false)
@@ -46,6 +46,7 @@ export default function FichaServicio() {
     fecha: '', fecha_fin: '', hora_inicio: '', hora_fin: '',
     recurrencia_tipo: '', recurrencia_fin: '',
     tipo_consumo: 'contratado',
+    asignado_tipo_recurso: 'ingenieria', _requiereTipoManual: false,
   })
   const [usuarios, setUsuarios] = useState([])
 
@@ -142,11 +143,12 @@ export default function FichaServicio() {
   async function guardarTarea() {
     if (!formTarea.titulo) return
     try {
+      const { _requiereTipoManual, ...tareaPayload } = formTarea
       const r = await fetch(`${CP_API}/api/servicios/contratos/${codigo}/tareas`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
         body: JSON.stringify({
-          ...formTarea,
+          ...tareaPayload,
           fecha_fin:        formTarea.fecha_fin        || null,
           hora_inicio:      formTarea.hora_inicio      || null,
           hora_fin:         formTarea.hora_fin         || null,
@@ -156,7 +158,7 @@ export default function FichaServicio() {
       })
       if (r.ok) {
         setModalTarea(false)
-        setFormTarea({ titulo: '', descripcion: '', asignado_id: '', asignado_nombre: '', fecha: '', fecha_fin: '', hora_inicio: '', hora_fin: '', recurrencia_tipo: '', recurrencia_fin: '', tipo_consumo: 'contratado' })
+        setFormTarea({ titulo: '', descripcion: '', asignado_id: '', asignado_nombre: '', fecha: '', fecha_fin: '', hora_inicio: '', hora_fin: '', recurrencia_tipo: '', recurrencia_fin: '', tipo_consumo: 'contratado', asignado_tipo_recurso: 'ingenieria', _requiereTipoManual: false })
         cargar()
       }
     } catch (e) { console.error(e) }
@@ -220,12 +222,14 @@ export default function FichaServicio() {
   async function abrirEditarTarea(t) {
     if (usuarios.length === 0) await cargarUsuarios()
     setFormEditarTarea({
-      titulo:          t.titulo,
-      fecha:           t.fecha ?? '',
-      fecha_fin:       t.fecha_fin ?? '',
-      asignado_id:     t.asignado_id ?? '',
-      asignado_nombre: t.asignado_nombre ?? '',
-      tipo_consumo:    t.tipo_consumo ?? 'contratado',
+      titulo:                t.titulo,
+      fecha:                 t.fecha ?? '',
+      fecha_fin:             t.fecha_fin ?? '',
+      asignado_id:           t.asignado_id ?? '',
+      asignado_nombre:       t.asignado_nombre ?? '',
+      tipo_consumo:          t.tipo_consumo ?? 'contratado',
+      asignado_tipo_recurso: t.asignado_tipo_recurso ?? 'ingenieria',
+      _requiereTipoManual:   false,
     })
     setSubFormVisible(false)
     setSubFormData({})
@@ -250,12 +254,13 @@ export default function FichaServicio() {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
         body:    JSON.stringify({
-          titulo:          formEditarTarea.titulo.trim(),
-          fecha:           formEditarTarea.fecha     || null,
-          fecha_fin:       formEditarTarea.fecha_fin || null,
-          asignado_id:     formEditarTarea.asignado_id     || null,
-          asignado_nombre: formEditarTarea.asignado_nombre || null,
-          tipo_consumo:    formEditarTarea.tipo_consumo    ?? 'contratado',
+          titulo:                formEditarTarea.titulo.trim(),
+          fecha:                 formEditarTarea.fecha     || null,
+          fecha_fin:             formEditarTarea.fecha_fin || null,
+          asignado_id:           formEditarTarea.asignado_id     || null,
+          asignado_nombre:       formEditarTarea.asignado_nombre || null,
+          tipo_consumo:          formEditarTarea.tipo_consumo    ?? 'contratado',
+          asignado_tipo_recurso: formEditarTarea.asignado_tipo_recurso || 'ingenieria',
         }),
       })
       if (r.ok) {
@@ -335,6 +340,16 @@ export default function FichaServicio() {
       })
       setRecursosEnTarea(list => list.filter(x => x.id !== recursoId))
     } catch (e) { console.error(e) }
+  }
+
+  /** Resuelve automáticamente el tipo de recurso del asignado según su(s) tipo(s) y rol — solo pide selección manual si es ambiguo y no es un rol de liderazgo. */
+  function resolverTipoRecursoAsignado(usuarioId) {
+    const u = usuarios.find(x => String(x.id) === String(usuarioId))
+    if (!u || !u.tipos || u.tipos.length === 0) return { tipo: '', requiereSeleccion: true }
+    if (u.tipos.length === 1) return { tipo: u.tipos[0], requiereSeleccion: false }
+    const rolesLiderazgo = ['lider_ingenieria', 'lider', 'gerencia', 'admin']
+    if (rolesLiderazgo.includes(u.rol)) return { tipo: 'ingenieria', requiereSeleccion: false }
+    return { tipo: '', requiereSeleccion: true }
   }
 
   /** Cierra el ticket del recurso seleccionado (principal o adicional) con hora inicio/fin y nota. */
@@ -811,7 +826,14 @@ export default function FichaServicio() {
                   value={formTarea.asignado_id}
                   onChange={e => {
                     const u = usuarios.find(u => u.id === e.target.value)
-                    setFormTarea(f => ({ ...f, asignado_id: e.target.value, asignado_nombre: u?.nombre ?? '' }))
+                    const { tipo, requiereSeleccion } = resolverTipoRecursoAsignado(e.target.value)
+                    setFormTarea(f => ({
+                      ...f,
+                      asignado_id:           e.target.value,
+                      asignado_nombre:       u?.nombre ?? '',
+                      asignado_tipo_recurso: tipo,
+                      _requiereTipoManual:   requiereSeleccion,
+                    }))
                   }}
                   className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm"
                 >
@@ -819,6 +841,23 @@ export default function FichaServicio() {
                   {usuarios.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                 </select>
               </div>
+              {formTarea._requiereTipoManual && (
+                <div>
+                  <label className="text-sm text-[#5f6b75]">Tipo de recurso (no se pudo determinar automáticamente)</label>
+                  <select
+                    value={formTarea.asignado_tipo_recurso}
+                    onChange={e => setFormTarea(f => ({ ...f, asignado_tipo_recurso: e.target.value }))}
+                    className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm"
+                  >
+                    <option value="">— Seleccionar —</option>
+                    <option value="ingenieria">Ingeniería</option>
+                    <option value="planos">Planos</option>
+                    <option value="diseno">Diseño</option>
+                    <option value="ensamble">Técnico de ensamble</option>
+                    <option value="campo">Técnico de campo</option>
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="text-sm text-[#5f6b75]">Fecha inicio</label>
                 <input
@@ -973,10 +1012,13 @@ export default function FichaServicio() {
                 value={formEditarTarea.asignado_id ?? ''}
                 onChange={e => {
                   const u = usuarios.find(u => String(u.id) === e.target.value)
+                  const { tipo, requiereSeleccion } = resolverTipoRecursoAsignado(e.target.value)
                   setFormEditarTarea(f => ({
                     ...f,
-                    asignado_id:     e.target.value,
-                    asignado_nombre: u?.nombre ?? '',
+                    asignado_id:           e.target.value,
+                    asignado_nombre:       u?.nombre ?? '',
+                    asignado_tipo_recurso: tipo,
+                    _requiereTipoManual:   requiereSeleccion,
                   }))
                 }}
                 className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm"
@@ -987,6 +1029,24 @@ export default function FichaServicio() {
                 ))}
               </select>
             </div>
+
+            {formEditarTarea._requiereTipoManual && (
+              <div>
+                <label className="text-sm text-[#5f6b75]">Tipo de recurso (no se pudo determinar automáticamente)</label>
+                <select
+                  value={formEditarTarea.asignado_tipo_recurso}
+                  onChange={e => setFormEditarTarea(f => ({ ...f, asignado_tipo_recurso: e.target.value }))}
+                  className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="">— Seleccionar —</option>
+                  <option value="ingenieria">Ingeniería</option>
+                  <option value="planos">Planos</option>
+                  <option value="diseno">Diseño</option>
+                  <option value="ensamble">Técnico de ensamble</option>
+                  <option value="campo">Técnico de campo</option>
+                </select>
+              </div>
+            )}
 
             {contrato?.modalidad === 'mixto' && (
               <div>
