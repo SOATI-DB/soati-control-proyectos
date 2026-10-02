@@ -228,3 +228,25 @@ export const cerrarTicketRecurso = (recursoId, body) =>
   fetch(`${BASE}/api/recursos/${recursoId}/cerrar`, {
     method: 'POST', headers: headers(), body: JSON.stringify(body)
   }).then(r => r.json().then(data => ({ ok: r.ok, data })))
+
+// Verificación y borrado de proyectos y servicios
+export const verificarBorradoProyecto = (codigo) =>
+  fetch(`${SHELL_API}/api/proyectos/tiene-registros/${encodeURIComponent(codigo)}`, { headers: headers() })
+    .then(r => r.json())
+    .catch(() => ({ puede_borrar: false, bloqueos: ['Error al verificar'] }))
+
+export const eliminarProyecto = (id) =>
+  fetch(`${BASE}/api/proyectos/${id}`, { method: 'DELETE', headers: headers() })
+    .then(r => r.json().then(data => ({ ok: r.ok, data })))
+
+export const eliminarServicio = (codigo) =>
+  fetch(`${BASE}/api/servicios/contratos/${encodeURIComponent(codigo)}`, { method: 'DELETE', headers: headers() })
+    .then(r => r.json().then(data => ({ ok: r.ok, data })))
+
+export const deshabilitarProyecto = (codigo) =>
+  fetch(`${BASE}/api/proyectos/${encodeURIComponent(codigo)}/deshabilitar`, { method: 'PATCH', headers: headers() })
+    .then(r => r.json().then(data => ({ ok: r.ok, data })))
+
+export const deshabilitarServicio = (codigo) =>
+  fetch(`${BASE}/api/servicios/contratos/${encodeURIComponent(codigo)}/deshabilitar`, { method: 'PATCH', headers: headers() })
+    .then(r => r.json().then(data => ({ ok: r.ok, data })))

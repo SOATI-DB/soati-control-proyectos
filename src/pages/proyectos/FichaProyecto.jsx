@@ -12,6 +12,7 @@ import {
   getRecursosIngenieria, getPMs, getComercialesCP,
   getRecursosDisponibles, verificarDisponibilidad, asignarRecurso, eliminarRecurso, getRecursosTarea,
   crearSubproyecto, actualizarSubproyecto, eliminarSubproyecto,
+  verificarBorradoProyecto, eliminarProyecto, deshabilitarProyecto,
 } from '../../services/api'
 import GanttProyecto from './GanttProyecto'
 import { SearchableSelect } from '../../components/ui/SearchableSelect'
@@ -89,6 +90,17 @@ export default function FichaProyecto() {
   const [formSP, setFormSP] = useState({})
   const [guardandoSP, setGuardandoSP] = useState(false)
 
+  // Borrado de proyecto
+  const [modalBorrar,       setModalBorrar]       = useState(false)
+  const [bloqueosBorrar,    setBloqueosBorrar]    = useState([])
+  const [verificandoBorrar, setVerificandoBorrar] = useState(false)
+  const [borrandoProyecto,  setBorrandoProyecto]  = useState(false)
+
+  // Chequeo proactivo de borrado y deshabilitar
+  const [puedeEliminar,      setPuedeEliminar]      = useState(null)
+  const [detalleRelacionados, setDetalleRelacionados] = useState([])
+  const [modalDeshabilitar,  setModalDeshabilitar]  = useState(false)
+
   const tareasDisponiblesComoPredecesoras = useMemo(() => {
     const todasTareas = (proyecto?.tareas || []).filter(t => t.activo !== 0 && t.id !== modalForm.id)
     if (!modalForm.fase_id || !proyecto?.subproyectos?.length) return todasTareas
@@ -162,6 +174,20 @@ export default function FichaProyecto() {
         .catch(e => { setErrorCostos(e.message || 'Error'); setCargandoCostos(false) })
     }
   }, [tab])
+
+  // Chequeo proactivo: verifica si se puede borrar al entrar en modo edición
+  useEffect(() => {
+    if (!editandoFicha || !proyecto?.codigo) { setPuedeEliminar(null); return }
+    setPuedeEliminar(null)
+    verificarBorradoProyecto(proyecto.codigo).then(res => {
+      // verificarBorradoProyecto devuelve { puede_borrar, bloqueos } directamente
+      setPuedeEliminar(res?.puede_borrar === true)
+      setDetalleRelacionados(res?.bloqueos ?? [])
+    }).catch(() => {
+      setPuedeEliminar(false)
+      setDetalleRelacionados(['No se pudo verificar — reintentar más tarde'])
+    })
+  }, [editandoFicha, proyecto?.codigo])
 
   function iniciarEditFicha() {
     setFichaForm({
@@ -453,6 +479,36 @@ export default function FichaProyecto() {
     await cargar()
   }
 
+  async function abrirModalBorrar() {
+    setBloqueosBorrar([])
+    setModalBorrar(true)
+    setVerificandoBorrar(true)
+    try {
+      const res = await verificarBorradoProyecto(proyecto.codigo)
+      setBloqueosBorrar(res.bloqueos ?? [])
+    } catch {
+      setBloqueosBorrar(['Error al verificar registros'])
+    } finally {
+      setVerificandoBorrar(false)
+    }
+  }
+
+  async function confirmarBorrar() {
+    setBorrandoProyecto(true)
+    try {
+      const res = await eliminarProyecto(id)
+      if (res.ok) {
+        navigate('/proyectos')
+      } else {
+        setBloqueosBorrar(res.data?.bloqueos ?? [res.data?.error ?? 'Error al eliminar'])
+      }
+    } catch {
+      setBloqueosBorrar(['Error al eliminar el proyecto'])
+    } finally {
+      setBorrandoProyecto(false)
+    }
+  }
+
   if (cargando) return <div className="flex items-center justify-center py-16 text-[#5f6b75] text-sm">Cargando...</div>
   if (!proyecto || proyecto.error) return <div className="text-center py-16 text-red-500 text-sm">Proyecto no encontrado.</div>
 
@@ -498,9 +554,11 @@ export default function FichaProyecto() {
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-medium text-[#2c3e50]">Ficha del proyecto</h3>
             {puedeGestionar && !editandoFicha && (
-              <button onClick={iniciarEditFicha} className="text-xs text-[#4E738A] border border-[#4E738A] px-3 py-1.5 rounded-lg hover:bg-[#4E738A]/5">
-                Editar
-              </button>
+              <div className="flex items-center gap-2">
+                <button onClick={iniciarEditFicha} className="text-xs text-[#4E738A] border border-[#4E738A] px-3 py-1.5 rounded-lg hover:bg-[#4E738A]/5">
+                  Editar
+                </button>
+              </div>
             )}
           </div>
 
@@ -615,7 +673,24 @@ export default function FichaProyecto() {
                 <label className="block text-xs text-gray-500 mb-1">Descripción / alcance</label>
                 <textarea value={fichaForm.descripcion} onChange={e => setFichaForm(f => ({ ...f, descripcion: e.target.value }))} rows={4} className={inp()} />
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
+                <button onClick={() => setModalDeshabilitar(true)} className="text-xs text-[#d9534f] border border-[#d9534f] px-3 py-1.5 rounded-lg hover:bg-[#d9534f]/5 mr-auto">
+                  Deshabilitar
+                </button>
+                <div className="relative group">
+                  <button
+                    onClick={() => puedeEliminar && abrirModalBorrar()}
+                    disabled={!puedeEliminar}
+                    className="text-xs text-[#d9534f] border border-[#d9534f] px-3 py-1.5 rounded-lg hover:bg-[#d9534f]/5 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                  >
+                    Eliminar
+                  </button>
+                  {!puedeEliminar && detalleRelacionados.length > 0 && (
+                    <div className="absolute bottom-full mb-1 hidden group-hover:block bg-[#2C3A43] text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap z-10">
+                      No se puede eliminar — {detalleRelacionados.join(', ')}
+                    </div>
+                  )}
+                </div>
                 <button onClick={guardarFicha} disabled={guardandoFicha} className="px-4 py-2 text-sm bg-[#4E738A] text-white rounded-lg hover:bg-[#3d5c70] disabled:opacity-40">
                   {guardandoFicha ? 'Guardando...' : 'Guardar'}
                 </button>
@@ -1590,6 +1665,73 @@ export default function FichaProyecto() {
                 className="text-sm text-[#5f6b75] hover:text-[#2C3A43] mt-1"
               >
                 Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal eliminar proyecto */}
+      {modalBorrar && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
+            <h3 className="text-base font-semibold text-[#2c3e50] mb-4">Eliminar proyecto</h3>
+            {verificandoBorrar ? (
+              <p className="text-sm text-gray-400">Verificando registros...</p>
+            ) : bloqueosBorrar.length > 0 ? (
+              <div>
+                <p className="text-sm text-gray-600 mb-3">No se puede eliminar el proyecto:</p>
+                <ul className="text-sm text-red-600 list-disc pl-5 space-y-1 mb-4">
+                  {bloqueosBorrar.map((b, i) => <li key={i}>{b}</li>)}
+                </ul>
+                <button onClick={() => setModalBorrar(false)} className="w-full py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
+                  Cerrar
+                </button>
+              </div>
+            ) : (
+              <div>
+                <p className="text-sm text-gray-600 mb-4">¿Confirmar eliminación de <strong>{proyecto?.nombre}</strong>? Esta acción no se puede deshacer.</p>
+                <div className="flex gap-2">
+                  <button onClick={() => setModalBorrar(false)} disabled={borrandoProyecto}
+                    className="flex-1 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50">
+                    Cancelar
+                  </button>
+                  <button onClick={confirmarBorrar} disabled={borrandoProyecto}
+                    className="flex-1 py-2 text-sm bg-[#d9534f] hover:bg-[#c9302c] text-white rounded-lg disabled:opacity-50">
+                    {borrandoProyecto ? 'Eliminando...' : 'Eliminar proyecto'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal deshabilitar proyecto */}
+      {modalDeshabilitar && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
+            <h3 className="text-base font-semibold text-[#2c3e50] mb-4">Deshabilitar proyecto</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              El proyecto dejará de aparecer en los listados activos. Esta acción no borra ningún dato y se puede revertir manualmente si hace falta.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => setModalDeshabilitar(false)} className="flex-1 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">
+                Cancelar
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    await deshabilitarProyecto(proyecto.codigo)
+                  } catch (e) {
+                    console.error('[deshabilitar proyecto]', e)
+                  }
+                  setModalDeshabilitar(false)
+                  navigate('/proyectos')
+                }}
+                className="flex-1 py-2 text-sm bg-[#d9534f] hover:bg-[#c9302c] text-white rounded-lg"
+              >
+                Deshabilitar
               </button>
             </div>
           </div>

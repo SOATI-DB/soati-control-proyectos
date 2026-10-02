@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth.js'
-import { getRecursosDisponibles, verificarDisponibilidad, cerrarTicketPrincipal, cerrarTicketRecurso } from '../../services/api.js'
+import { getRecursosDisponibles, verificarDisponibilidad, cerrarTicketPrincipal, cerrarTicketRecurso, eliminarServicio, verificarBorradoProyecto, deshabilitarServicio } from '../../services/api.js'
 
 const CP_API    = import.meta.env.VITE_API_URL ?? 'http://localhost:3011'
 const TOKEN_KEY = 'soati_shell_token'
@@ -39,6 +39,18 @@ export default function FichaServicio() {
   const [formCierre, setFormCierre] = useState({ hora_inicio: '', hora_fin: '', nota_cierre: '' })
   const [guardandoCierre, setGuardandoCierre] = useState(false)
   const [errorCierre, setErrorCierre] = useState('')
+
+  // Borrado de servicio
+  const [modalBorrarServicio,       setModalBorrarServicio]       = useState(false)
+  const [bloqueosBorrarServicio,    setBloqueosBorrarServicio]    = useState([])
+  const [verificandoBorrarServicio, setVerificandoBorrarServicio] = useState(false)
+  const [borrandoServicio,          setBorrandoServicio]          = useState(false)
+
+  // Chequeo proactivo de borrado y deshabilitar
+  const [puedeEliminar,       setPuedeEliminar]       = useState(null)
+  const [detalleRelacionados, setDetalleRelacionados] = useState([])
+  const [modalDeshabilitar,   setModalDeshabilitar]   = useState(false)
+
   const [editandoRecurso, setEditandoRecurso]   = useState(null)
   const [formRecurso, setFormRecurso]           = useState({})
   const [formTarea, setFormTarea]               = useState({
@@ -51,6 +63,20 @@ export default function FichaServicio() {
   const [usuarios, setUsuarios] = useState([])
 
   useEffect(() => { cargar() }, [codigo])
+
+  // Chequeo proactivo: verifica si se puede borrar al abrir el modal de edición
+  useEffect(() => {
+    if (!modalEditar || !contrato?.codigo) { setPuedeEliminar(null); return }
+    setPuedeEliminar(null)
+    verificarBorradoProyecto(contrato.codigo).then(res => {
+      // verificarBorradoProyecto devuelve { puede_borrar, bloqueos } directamente
+      setPuedeEliminar(res?.puede_borrar === true)
+      setDetalleRelacionados(res?.bloqueos ?? [])
+    }).catch(() => {
+      setPuedeEliminar(false)
+      setDetalleRelacionados(['No se pudo verificar — reintentar más tarde'])
+    })
+  }, [modalEditar, contrato?.codigo])
 
   /** Carga el contrato y sus tareas desde la API usando el código de la ruta. */
   async function cargar() {
@@ -402,6 +428,36 @@ export default function FichaServicio() {
     } catch (e) { console.error('[guardarEdicionRecursoServicio]', e) }
   }
 
+  async function abrirModalBorrarServicio() {
+    setBloqueosBorrarServicio([])
+    setModalBorrarServicio(true)
+    setVerificandoBorrarServicio(true)
+    try {
+      const res = await verificarBorradoProyecto(contrato.codigo)
+      setBloqueosBorrarServicio(res.bloqueos ?? [])
+    } catch {
+      setBloqueosBorrarServicio(['Error al verificar registros'])
+    } finally {
+      setVerificandoBorrarServicio(false)
+    }
+  }
+
+  async function confirmarBorrarServicio() {
+    setBorrandoServicio(true)
+    try {
+      const res = await eliminarServicio(contrato.codigo)
+      if (res.ok) {
+        navigate('/servicios')
+      } else {
+        setBloqueosBorrarServicio(res.data?.bloqueos ?? [res.data?.error ?? 'Error al eliminar'])
+      }
+    } catch {
+      setBloqueosBorrarServicio(['Error al eliminar el contrato'])
+    } finally {
+      setBorrandoServicio(false)
+    }
+  }
+
   if (loading) return <div className="text-center text-[#9aa1a9] py-12">Cargando...</div>
   if (!contrato) return null
 
@@ -426,12 +482,14 @@ export default function FichaServicio() {
           </div>
           <div className="flex items-center gap-2">
             {puedeGestionar && (
-              <button
-                onClick={abrirEditar}
-                className="px-3 py-1.5 border border-[#4E738A] text-[#4E738A] text-sm rounded-lg hover:bg-[#4E738A] hover:text-white transition-colors"
-              >
-                Editar
-              </button>
+              <>
+                <button
+                  onClick={abrirEditar}
+                  className="px-3 py-1.5 border border-[#4E738A] text-[#4E738A] text-sm rounded-lg hover:bg-[#4E738A] hover:text-white transition-colors"
+                >
+                  Editar
+                </button>
+              </>
             )}
             <span className={`px-3 py-1 rounded-full text-sm font-medium ${
               contrato.estado === 'activo'  ? 'bg-green-100 text-green-700' :
@@ -791,7 +849,24 @@ export default function FichaServicio() {
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 mt-5">
+            <div className="flex gap-2 items-center mt-5">
+              <button onClick={() => setModalDeshabilitar(true)} className="text-xs text-[#d9534f] border border-[#d9534f] px-3 py-1.5 rounded-lg hover:bg-[#d9534f]/5 mr-auto">
+                Deshabilitar
+              </button>
+              <div className="relative group">
+                <button
+                  onClick={() => puedeEliminar && abrirModalBorrarServicio()}
+                  disabled={!puedeEliminar}
+                  className="text-xs text-[#d9534f] border border-[#d9534f] px-3 py-1.5 rounded-lg hover:bg-[#d9534f]/5 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                >
+                  Eliminar
+                </button>
+                {!puedeEliminar && detalleRelacionados.length > 0 && (
+                  <div className="absolute bottom-full mb-1 hidden group-hover:block bg-[#2C3A43] text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap z-10">
+                    No se puede eliminar — {detalleRelacionados.join(', ')}
+                  </div>
+                )}
+              </div>
               <button onClick={() => setModalEditar(false)} className="px-4 py-2 text-sm text-[#5f6b75] hover:text-[#2C3A43]">
                 Cancelar
               </button>
@@ -1459,6 +1534,73 @@ export default function FichaServicio() {
                 {guardandoCierre ? 'Cerrando...' : 'Confirmar cierre'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal deshabilitar servicio */}
+      {modalDeshabilitar && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
+            <h3 className="text-base font-semibold text-[#2C3A43] mb-4">Deshabilitar servicio</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              El servicio dejará de aparecer en los listados activos. Esta acción no borra ningún dato y se puede revertir manualmente si hace falta.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => setModalDeshabilitar(false)} className="flex-1 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">
+                Cancelar
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    await deshabilitarServicio(contrato.codigo)
+                  } catch (e) {
+                    console.error('[deshabilitar servicio]', e)
+                  }
+                  setModalDeshabilitar(false)
+                  navigate('/servicios')
+                }}
+                className="flex-1 py-2 text-sm bg-[#d9534f] hover:bg-[#c9302c] text-white rounded-lg"
+              >
+                Deshabilitar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal eliminar servicio */}
+      {modalBorrarServicio && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
+            <h3 className="text-base font-semibold text-[#2C3A43] mb-4">Eliminar servicio</h3>
+            {verificandoBorrarServicio ? (
+              <p className="text-sm text-gray-400">Verificando registros...</p>
+            ) : bloqueosBorrarServicio.length > 0 ? (
+              <div>
+                <p className="text-sm text-gray-600 mb-3">No se puede eliminar el servicio:</p>
+                <ul className="text-sm text-red-600 list-disc pl-5 space-y-1 mb-4">
+                  {bloqueosBorrarServicio.map((b, i) => <li key={i}>{b}</li>)}
+                </ul>
+                <button onClick={() => setModalBorrarServicio(false)} className="w-full py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
+                  Cerrar
+                </button>
+              </div>
+            ) : (
+              <div>
+                <p className="text-sm text-gray-600 mb-4">¿Confirmar eliminación de <strong>{contrato?.nombre}</strong>? Esta acción no se puede deshacer.</p>
+                <div className="flex gap-2">
+                  <button onClick={() => setModalBorrarServicio(false)} disabled={borrandoServicio}
+                    className="flex-1 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50">
+                    Cancelar
+                  </button>
+                  <button onClick={confirmarBorrarServicio} disabled={borrandoServicio}
+                    className="flex-1 py-2 text-sm bg-[#d9534f] hover:bg-[#c9302c] text-white rounded-lg disabled:opacity-50">
+                    {borrandoServicio ? 'Eliminando...' : 'Eliminar servicio'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
