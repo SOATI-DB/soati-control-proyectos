@@ -160,7 +160,7 @@ export default function CalendarioRecursos() {
             fecha_limite_fija: esServicio
               ? (asig.sv_fecha_limite_fija ?? false)
               : (asig.tarea_fecha_limite_fija ?? false),
-            pm_nombre:              esServicio ? null : (asig.pm_nombre ?? null),
+            pm_nombre:              esServicio ? (asig.sv_pm_nombre ?? null) : (asig.pm_nombre ?? null),
             ingeniero_cargo_nombre: esServicio ? null : (asig.ingeniero_cargo_nombre ?? null),
             proyecto_id:            asig.proyecto_id      ?? null,
             tarea_id:               asig.tarea_id         ?? null,
@@ -428,7 +428,7 @@ export default function CalendarioRecursos() {
           {tooltip.asig.tipo === 'servicio' && tooltip.asig.tarea_descripcion && (
             <p className="text-gray-600 text-xs mb-1">{tooltip.asig.tarea_descripcion}</p>
           )}
-          {tooltip.asig.tipo !== 'servicio' && tooltip.asig.pm_nombre && (
+          {tooltip.asig.pm_nombre && (
             <p className="text-gray-700 mb-1">
               <span className="text-gray-400 text-xs">PM: </span>
               {tooltip.asig.pm_nombre}

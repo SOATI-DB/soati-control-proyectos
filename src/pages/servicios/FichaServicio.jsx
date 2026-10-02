@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth.js'
-import { getRecursosDisponibles, verificarDisponibilidad, cerrarTicketPrincipal, cerrarTicketRecurso, eliminarServicio, verificarBorradoProyecto, deshabilitarServicio } from '../../services/api.js'
+import { getRecursosDisponibles, verificarDisponibilidad, cerrarTicketPrincipal, cerrarTicketRecurso, eliminarServicio, verificarBorradoProyecto, deshabilitarServicio, getPMs } from '../../services/api.js'
+import { SearchableSelect } from '../../components/ui/SearchableSelect'
 
 const CP_API    = import.meta.env.VITE_API_URL ?? 'http://localhost:3011'
 const TOKEN_KEY = 'soati_shell_token'
@@ -61,8 +62,10 @@ export default function FichaServicio() {
     asignado_tipo_recurso: 'ingenieria', _requiereTipoManual: false,
   })
   const [usuarios, setUsuarios] = useState([])
+  const [pms, setPms] = useState([])
 
   useEffect(() => { cargar() }, [codigo])
+  useEffect(() => { getPMs().then(setPms).catch(() => {}) }, [])
 
   // Chequeo proactivo: verifica si se puede borrar al abrir el modal de edición
   useEffect(() => {
@@ -127,6 +130,8 @@ export default function FichaServicio() {
       fecha_fin:           contrato.fecha_fin           ?? '',
       estado:              contrato.estado              ?? 'activo',
       notas:               contrato.notas               ?? '',
+      pm_id:               contrato.pm_id != null ? String(contrato.pm_id) : '',
+      pm_nombre:           contrato.pm_nombre           ?? '',
     })
     setErrorEditar('')
     setModalEditar(true)
@@ -500,11 +505,12 @@ export default function FichaServicio() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4 text-sm">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mt-4 text-sm">
           <div><span className="text-[#9aa1a9]">Cliente</span><p className="text-[#2C3A43] font-medium mt-0.5">{contrato.cliente_nombre}</p></div>
           <div><span className="text-[#9aa1a9]">Tipo</span><p className="text-[#2C3A43] font-medium mt-0.5">{contrato.tipo}{contrato.modalidad ? ` · ${contrato.modalidad}` : ''}</p></div>
           <div><span className="text-[#9aa1a9]">Periodo</span><p className="text-[#2C3A43] font-medium mt-0.5">{contrato.periodo}</p></div>
           <div><span className="text-[#9aa1a9]">Origen</span><p className="text-[#2C3A43] font-medium mt-0.5 capitalize">{contrato.origen}</p></div>
+          <div><span className="text-[#9aa1a9]">PM</span><p className="text-[#2C3A43] font-medium mt-0.5">{contrato.pm_nombre || 'Sin asignar'}</p></div>
         </div>
 
         {mostrarSaldo && (
@@ -846,6 +852,24 @@ export default function FichaServicio() {
                 <label className="text-sm text-[#5f6b75]">Notas</label>
                 <textarea value={formEditar.notas ?? ''} onChange={e => setFormEditar(f => ({ ...f, notas: e.target.value }))}
                   rows={2} className="mt-1 w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm resize-none" />
+              </div>
+
+              {/* PM asignado al contrato (v1.6.0) */}
+              <div>
+                <label className="text-sm text-[#5f6b75]">PM asignado</label>
+                <SearchableSelect
+                  options={[
+                    { value: '', label: 'Sin asignar' },
+                    ...pms.map(u => ({ value: String(u.id), label: u.nombre }))
+                  ]}
+                  value={formEditar.pm_id || ''}
+                  onChange={val => {
+                    const sel = pms.find(u => String(u.id) === val)
+                    setFormEditar(f => ({ ...f, pm_id: val, pm_nombre: sel?.nombre || '' }))
+                  }}
+                  placeholder="Sin asignar"
+                  searchPlaceholder="Buscar PM..."
+                />
               </div>
             </div>
 

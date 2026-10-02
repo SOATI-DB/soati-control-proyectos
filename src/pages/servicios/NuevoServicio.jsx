@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { getPMs } from '../../services/api'
+import { SearchableSelect } from '../../components/ui/SearchableSelect'
 const CP_API    = import.meta.env.VITE_API_URL ?? 'http://localhost:3011'
 const TOKEN_KEY = 'soati_shell_token'
 
@@ -21,10 +23,14 @@ export default function NuevoServicio() {
     tipo: '', modalidad: '', periodo: 'unico',
     cantidad_contratada: '', cantidad_disponible: '',
     cantidad_demanda_limite: '',
-    fecha_inicio: '', fecha_fin: '', notas: ''
+    fecha_inicio: '', fecha_fin: '', notas: '',
+    pm_id: '', pm_nombre: '',
   })
   const [guardando, setGuardando] = useState(false)
   const [error, setError]         = useState('')
+  const [pms, setPms]             = useState([])
+
+  useEffect(() => { getPMs().then(setPms).catch(() => {}) }, [])
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -69,6 +75,8 @@ export default function NuevoServicio() {
           fecha_inicio: form.fecha_inicio || null,
           fecha_fin:    form.fecha_fin    || null,
           modalidad:    form.modalidad    || null,
+          pm_id:        form.pm_id        || null,
+          pm_nombre:    form.pm_nombre    || null,
         })
       })
       const data = await r.json()
@@ -198,6 +206,24 @@ export default function NuevoServicio() {
           <label className="text-sm text-[#5f6b75]">Notas</label>
           <textarea value={form.notas} onChange={e => set('notas', e.target.value)} rows={3}
             className={`${inp} resize-none`} />
+        </div>
+
+        {/* PM asignado al contrato (v1.6.1) */}
+        <div>
+          <label className="text-sm text-[#5f6b75]">PM asignado</label>
+          <SearchableSelect
+            options={[
+              { value: '', label: 'Sin asignar' },
+              ...pms.map(u => ({ value: String(u.id), label: u.nombre }))
+            ]}
+            value={form.pm_id || ''}
+            onChange={val => {
+              const sel = pms.find(u => String(u.id) === val)
+              setForm(f => ({ ...f, pm_id: val, pm_nombre: sel?.nombre || '' }))
+            }}
+            placeholder="Sin asignar"
+            searchPlaceholder="Buscar PM..."
+          />
         </div>
 
         {error && <p className="text-sm text-[#d9534f]">{error}</p>}
