@@ -16,6 +16,7 @@ import {
 } from '../../services/api'
 import GanttProyecto from './GanttProyecto'
 import { SearchableSelect } from '../../components/ui/SearchableSelect'
+import PanelCostos, { DetalleOrdenes } from '../../components/PanelCostos'
 
 const TABS = ['General', 'Fases', 'Tareas', 'Gantt', 'Adjuntos', 'Contactos', 'Facturación', 'Costos']
 
@@ -1053,42 +1054,12 @@ export default function FichaProyecto() {
 
       {/* TAB COSTOS */}
       {tab === 'Costos' && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <h3 className="font-medium text-[#2c3e50] mb-4">Costos de compras</h3>
+        <div>
           {cargandoCostos && <p className="text-sm text-gray-400">Cargando costos...</p>}
-          {errorCostos && <p className="text-sm text-red-500">No se pudieron cargar los costos de compras.</p>}
-          {costos && !errorCostos && (() => {
-            const mos = costos.mos ?? (Array.isArray(costos) ? costos : [])
-            const resumen = costos.resumen ?? null
-            const fmtUSD = v => v != null ? `$${parseFloat(v).toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'
-            return (
-              <div className="space-y-4">
-                {resumen && (
-                  <div className="grid grid-cols-3 gap-3">
-                    {[
-                      ['Cotizado total', resumen.cotizado_total, 'text-[#2c3e50]'],
-                      ['Ingresado', resumen.ingreso_total, 'text-green-700'],
-                      ['Pendiente', resumen.pendiente_total, 'text-yellow-700'],
-                    ].map(([l, v, cls]) => (
-                      <div key={l} className="rounded-lg border border-gray-100 p-3 text-center">
-                        <p className="text-xs text-gray-400 mb-1">{l}</p>
-                        <p className={`font-semibold text-sm ${cls}`}>{fmtUSD(v)}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {mos.length === 0
-                  ? <p className="text-sm text-gray-400">Sin órdenes de material vinculadas.</p>
-                  : mos.map((mo, i) => (
-                    <div key={i} className="border border-gray-100 rounded-lg p-3 text-sm">
-                      <p className="font-medium text-[#2c3e50]">{mo.numero || mo.id}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">{mo.estado} · {mo.proveedor}</p>
-                    </div>
-                  ))
-                }
-              </div>
-            )
-          })()}
+          {errorCostos && <p className="text-sm text-red-500">No se pudieron cargar los costos.</p>}
+          {costos && !errorCostos && (costos.costos
+            ? <PanelCostos costos={costos.costos} detalleCompras={<DetalleOrdenes mos={costos.mos ?? []} resumen={costos.resumen ?? null} />} />
+            : <p className="text-sm text-red-500">No se pudieron cargar los costos.</p>)}
         </div>
       )}
 

@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth.js'
-import { getRecursosDisponibles, verificarDisponibilidad, cerrarTicketPrincipal, cerrarTicketRecurso, eliminarServicio, verificarBorradoProyecto, deshabilitarServicio, getPMs } from '../../services/api.js'
+import { getRecursosDisponibles, verificarDisponibilidad, cerrarTicketPrincipal, cerrarTicketRecurso, eliminarServicio, verificarBorradoProyecto, deshabilitarServicio, getPMs, getCostosServicio } from '../../services/api.js'
 import { SearchableSelect } from '../../components/ui/SearchableSelect'
+import { sincronizarTareasContrato } from '../../services/api.js'
+import PanelCostos from '../../components/PanelCostos'
 
 const CP_API    = import.meta.env.VITE_API_URL ?? 'http://localhost:3011'
 const TOKEN_KEY = 'soati_shell_token'
@@ -63,9 +65,44 @@ export default function FichaServicio() {
   })
   const [usuarios, setUsuarios] = useState([])
   const [pms, setPms] = useState([])
+  // Sincronización de tareas con sus tickets (consumo del contrato)
+  const [sincronizando, setSincronizando] = useState(false)
+  const [resultadoSync, setResultadoSync] = useState(null)
+  // Costos del servicio (se cargan al abrir el tab)
+  const [costos, setCostos] = useState(null)
+  const [cargandoCostos, setCargandoCostos] = useState(false)
+  const [errorCostos, setErrorCostos] = useState(false)
 
   useEffect(() => { cargar() }, [codigo])
   useEffect(() => { getPMs().then(setPms).catch(() => {}) }, [])
+
+  /** Lee el estado de los tickets de las tareas: completa las ya cerradas y registra el consumo del contrato que falte */
+  const sincronizarTickets = async () => {
+    if (!contrato?.codigo) return
+    setSincronizando(true)
+    setResultadoSync(null)
+    try {
+      const { ok, data } = await sincronizarTareasContrato(contrato.codigo)
+      setResultadoSync(ok ? data : { error: data?.error ?? 'No se pudo sincronizar' })
+      if (ok) await cargar()
+    } catch (err) {
+      console.error('[FichaServicio] sincronizar tareas:', err)
+      setResultadoSync({ error: 'No se pudo sincronizar con los tickets' })
+    } finally {
+      setSincronizando(false)
+    }
+  }
+
+  // Carga los costos la primera vez que se abre el tab
+  useEffect(() => {
+    if (tabActivo !== 'costos' || costos || cargandoCostos || !codigo) return
+    setCargandoCostos(true)
+    setErrorCostos(false)
+    getCostosServicio(codigo)
+      .then(data => { if (data?.costos) setCostos(data.costos); else setErrorCostos(true) })
+      .catch(err => { console.error('[FichaServicio] costos:', err); setErrorCostos(true) })
+      .finally(() => setCargandoCostos(false))
+  }, [tabActivo, codigo])
 
   // Chequeo proactivo: verifica si se puede borrar al abrir el modal de edición
   useEffect(() => {
@@ -550,7 +587,7 @@ export default function FichaServicio() {
 
       <div className="bg-white rounded-xl border border-[#E8EAEC] overflow-hidden">
         <nav className="flex border-b border-[#E8EAEC]">
-          {['general', 'tareas', 'consumo'].map(tab => (
+          {['general', 'tareas', 'consumo', 'costos'].map(tab => (
             <button
               key={tab}
               onClick={() => setTabActivo(tab)}
@@ -560,7 +597,7 @@ export default function FichaServicio() {
                   : 'border-transparent text-[#5f6b75] hover:text-[#2C3A43]'
               }`}
             >
-              {tab === 'general' ? 'General' : tab === 'tareas' ? 'Tareas' : 'Consumo'}
+              {tab === 'general' ? 'General' : tab === 'tareas' ? 'Tareas' : tab === 'consumo' ? 'Consumo' : 'Costos'}
             </button>
           ))}
         </nav>
@@ -581,7 +618,15 @@ export default function FichaServicio() {
           {tabActivo === 'tareas' && (
             <div>
               {puedeGestionar && (
-                <div className="flex justify-end mb-4">
+                <div className="flex justify-end gap-2 mb-4">
+                  <button
+                    onClick={sincronizarTickets}
+                    disabled={sincronizando}
+                    title="Completa las tareas cuyo ticket ya se cerró y registra el consumo del contrato que falte"
+                    className="border border-[#4E738A]/30 text-[#4E738A] px-3 py-1.5 rounded-lg text-sm hover:border-[#4E738A] transition-colors disabled:opacity-50"
+                  >
+                    {sincronizando ? 'Sincronizando...' : 'Sincronizar con tickets'}
+                  </button>
                   <button
                     onClick={() => { cargarUsuarios(); setModalTarea(true) }}
                     className="bg-[#4E738A] text-white px-3 py-1.5 rounded-lg text-sm hover:bg-[#3a5a6e] transition-colors"
@@ -589,6 +634,17 @@ export default function FichaServicio() {
                     + Nueva tarea
                   </button>
                 </div>
+              )}
+
+              {resultadoSync && (
+                resultadoSync.error
+                  ? <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3">{resultadoSync.error}</p>
+                  : <p className="text-sm text-[#2C3A43] bg-[#4E738A]/5 border border-[#4E738A]/20 rounded-lg px-3 py-2 mb-3">
+                      {resultadoSync.completadas} tarea{resultadoSync.completadas === 1 ? '' : 's'} completada{resultadoSync.completadas === 1 ? '' : 's'},
+                      {' '}{resultadoSync.consumos_registrados} consumo{resultadoSync.consumos_registrados === 1 ? '' : 's'} registrado{resultadoSync.consumos_registrados === 1 ? '' : 's'}
+                      {resultadoSync.con_error > 0 ? `, ${resultadoSync.con_error} con error` : ''}
+                      {resultadoSync.sin_cerrar > 0 ? `, ${resultadoSync.sin_cerrar} con el ticket sin cerrar` : ''}.
+                    </p>
               )}
 
               {tareas.length === 0 ? (
@@ -600,6 +656,12 @@ export default function FichaServicio() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-medium text-[#2C3A43] text-sm">{t.titulo}</p>
+                          {t.consumo_estado === 'registrado' && (
+                            <span title="Consumo descontado del contrato" className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">Consumo registrado</span>
+                          )}
+                          {t.consumo_estado === 'error' && (
+                            <span title={t.consumo_error ?? ''} className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">Consumo con error</span>
+                          )}
                           {contrato?.modalidad === 'mixto' && (
                             <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
                               t.tipo_consumo === 'bajo_demanda'
@@ -715,6 +777,14 @@ export default function FichaServicio() {
                   </tbody>
                 </table>
               )}
+            </div>
+          )}
+
+          {tabActivo === 'costos' && (
+            <div>
+              {cargandoCostos && <p className="text-sm text-gray-400">Cargando costos...</p>}
+              {errorCostos && <p className="text-sm text-red-500">No se pudieron cargar los costos del servicio.</p>}
+              {costos && !errorCostos && <PanelCostos costos={costos} />}
             </div>
           )}
         </div>

@@ -24,6 +24,9 @@ export const actualizarFicha = (id, data) =>
 export const getCostosProyecto = (id) =>
   fetch(`${BASE}/api/proyectos/${id}/costos`, { headers: headers() }).then(r => r.json())
 
+export const getCostosServicio = (codigo) =>
+  fetch(`${BASE}/api/servicios/contratos/${encodeURIComponent(codigo)}/costos`, { headers: headers() }).then(r => r.json())
+
 // Fases
 export const getFases = (proyectoId) =>
   fetch(`${BASE}/api/fases/proyecto/${proyectoId}`, { headers: headers() }).then(r => r.json())
@@ -249,4 +252,8 @@ export const deshabilitarProyecto = (codigo) =>
 
 export const deshabilitarServicio = (codigo) =>
   fetch(`${BASE}/api/servicios/contratos/${encodeURIComponent(codigo)}/deshabilitar`, { method: 'PATCH', headers: headers() })
+    .then(r => r.json().then(data => ({ ok: r.ok, data })))
+
+export const sincronizarTareasContrato = (codigo) =>
+  fetch(`${BASE}/api/servicios/contratos/${encodeURIComponent(codigo)}/sincronizar-tareas`, { method: 'POST', headers: headers() })
     .then(r => r.json().then(data => ({ ok: r.ok, data })))

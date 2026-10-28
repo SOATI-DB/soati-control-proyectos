@@ -6,6 +6,9 @@ import { formatFecha } from '../../utils/fecha'
 const CP_API = import.meta.env.VITE_API_URL ?? 'http://localhost:3011'
 const token = () => localStorage.getItem('soati_shell_token')
 
+// Cada cuánto se actualiza sola la pantalla de recursos (milisegundos)
+const INTERVALO_REFRESCO_MS = 60_000
+
 const TIPOS = [
   { id: '',           label: 'Todos' },
   { id: 'ingenieria', label: 'Ingeniería' },
@@ -55,6 +58,8 @@ export default function CalendarioRecursos() {
   const [asignaciones, setAsignaciones] = useState([])
   const [cargando, setCargando]         = useState(false)
   const [tooltip, setTooltip]           = useState(null)
+  const [recarga, setRecarga]           = useState(0)      // sube en cada refresco automático para volver a leer los datos
+  const silencioRef                     = useRef(false)    // true mientras la carga es un refresco automático (sin pantalla de "Cargando")
 
   const mesBase  = new Date(hoy.getFullYear(), hoy.getMonth() + mesOffset, 1)
   const year     = mesBase.getFullYear()
@@ -110,32 +115,37 @@ export default function CalendarioRecursos() {
     const mesActual  = mesParaCargar
     const mesAnio    = parseInt(mesActual.split('-')[1])
     const anioActual = parseInt(mesActual.split('-')[0])
-    setCargando(true)
+    // Un refresco automático no muestra "Cargando" ni vacía la pantalla si una consulta falla: se conserva lo que ya se ve
+    const silencioso = silencioRef.current
+    silencioRef.current = false
+    if (!silencioso) setCargando(true)
+    let fallo = false
+    const sinDatos = () => { fallo = true; return [] }   // una consulta fallida devuelve lista vacía y queda marcada
     ;(async () => {
       try {
         let asigBase = []
         if (tipo === 'tecnicos') {
           const [ensamble, campo] = await Promise.all([
-            getCalendarioRecursos(mesActual, 'ensamble').catch(() => []),
-            getCalendarioRecursos(mesActual, 'campo').catch(() => []),
+            getCalendarioRecursos(mesActual, 'ensamble').catch(sinDatos),
+            getCalendarioRecursos(mesActual, 'campo').catch(sinDatos),
           ])
           asigBase = [...(Array.isArray(ensamble) ? ensamble : []),
                       ...(Array.isArray(campo) ? campo : [])]
         } else {
-          asigBase = await getCalendarioRecursos(mesActual, tipo || undefined).catch(() => [])
+          asigBase = await getCalendarioRecursos(mesActual, tipo || undefined).catch(sinDatos)
           if (!Array.isArray(asigBase)) asigBase = []
         }
         if (mesParaCargar2) {
           let asigBase2 = []
           if (tipo === 'tecnicos') {
             const [ensamble2, campo2] = await Promise.all([
-              getCalendarioRecursos(mesParaCargar2, 'ensamble').catch(() => []),
-              getCalendarioRecursos(mesParaCargar2, 'campo').catch(() => []),
+              getCalendarioRecursos(mesParaCargar2, 'ensamble').catch(sinDatos),
+              getCalendarioRecursos(mesParaCargar2, 'campo').catch(sinDatos),
             ])
             asigBase2 = [...(Array.isArray(ensamble2) ? ensamble2 : []),
                          ...(Array.isArray(campo2) ? campo2 : [])]
           } else {
-            asigBase2 = await getCalendarioRecursos(mesParaCargar2, tipo || undefined).catch(() => [])
+            asigBase2 = await getCalendarioRecursos(mesParaCargar2, tipo || undefined).catch(sinDatos)
             if (!Array.isArray(asigBase2)) asigBase2 = []
           }
           asigBase = [...asigBase, ...asigBase2]
@@ -169,14 +179,29 @@ export default function CalendarioRecursos() {
             sv_color:          asig.sv_color       ?? null,
           }
         })
+        if (silencioso && fallo) return
         setAsignaciones(asigBase)
         setCargando(false)
       } catch {
-        setAsignaciones([])
+        if (!silencioso) setAsignaciones([])
         setCargando(false)
       }
     })()
-  }, [mesStr, quincenaIdx, semanaOffset, tipo, vista, mesParaCargar2]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mesStr, quincenaIdx, semanaOffset, tipo, vista, mesParaCargar2, recarga]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Refresco automático: cada INTERVALO_REFRESCO_MS mientras la pestaña esté visible, y al volver a la pestaña
+  useEffect(() => {
+    // Pide una recarga silenciosa de los datos si la pestaña está visible
+    const refrescar = () => {
+      if (document.visibilityState !== 'visible') return
+      silencioRef.current = true
+      setRecarga(n => n + 1)
+    }
+    const t = setInterval(refrescar, INTERVALO_REFRESCO_MS)
+    document.addEventListener('visibilitychange', refrescar)
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', refrescar) }
+  }, [])
+
 
   // Agrupar por usuario
   const usuariosMap = {}
