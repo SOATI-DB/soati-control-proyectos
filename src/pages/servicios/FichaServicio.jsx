@@ -757,7 +757,8 @@ export default function FichaServicio() {
                       <th className="pb-2 pr-4">Fecha</th>
                       <th className="pb-2 pr-4">Tipo</th>
                       <th className="pb-2 pr-4">Cantidad</th>
-                      <th className="pb-2">Nota / Origen</th>
+                      <th className="pb-2 pr-4">Detalle</th>
+                      <th className="pb-2">Registrado por</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -771,7 +772,23 @@ export default function FichaServicio() {
                         <td className="py-2 pr-4 text-[#2C3A43] font-medium">
                           {a.cantidad != null ? `${a.cantidad > 0 ? '+' : ''}${a.cantidad}h` : a.visitas ? `${a.visitas} visita(s)` : '—'}
                         </td>
-                        <td className="py-2 text-[#5f6b75]">{a.nota ?? a.origen_id ?? '—'}</td>
+                        <td className="py-2 pr-4 text-[#5f6b75]">
+                          {a.ticket_id ? (
+                            <>
+                              {a.tarea_titulo ?? 'Ticket'}
+                              <a
+                                href={`${import.meta.env.VITE_TICKETS_URL ?? '/tickets'}/tickets/${a.ticket_id}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="ml-2 inline-flex items-center text-[11px] font-medium px-2 py-0.5 rounded-full bg-[#4E738A]/10 text-[#4E738A] hover:bg-[#4E738A]/20"
+                              >
+                                #{a.ticket_id}
+                              </a>
+                              {a.tarea_responsable && <span className="ml-2 text-xs text-[#9aa1a9]">{a.tarea_responsable}</span>}
+                            </>
+                          ) : (a.nota ?? a.origen_id ?? '—')}
+                        </td>
+                        <td className="py-2 text-[#5f6b75]">{a.registrado_por_nombre ?? '—'}</td>
                       </tr>
                     ))}
                   </tbody>
