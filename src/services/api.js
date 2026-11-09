@@ -264,6 +264,13 @@ export const cancelarAsignacion = (id) =>
   fetch(`${BASE}/api/asignaciones/${id}`, { method: 'DELETE', headers: headers() })
     .then(r => r.json().then(data => ({ ok: r.ok, data })))
 
+/** Asignaciones tentativas (solicitudes de forzado pendientes de aprobar) de un mes, para el calendario de Recursos. */
+export const getAsignacionesTentativas = (mes, tipo) => {
+  const params = new URLSearchParams({ mes })
+  if (tipo) params.append('tipo', tipo)
+  return fetch(`${BASE}/api/asignaciones/tentativas?${params}`, { headers: headers() }).then(r => r.json())
+}
+
 // Verificación y borrado de proyectos y servicios
 export const verificarBorradoProyecto = (codigo) =>
   fetch(`${SHELL_API}/api/proyectos/tiene-registros/${encodeURIComponent(codigo)}`, { headers: headers() })

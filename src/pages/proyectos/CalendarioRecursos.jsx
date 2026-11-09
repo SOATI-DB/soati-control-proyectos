@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getCalendarioRecursos } from '../../services/api'
+import { getCalendarioRecursos, getAsignacionesTentativas } from '../../services/api'
 import { formatFecha } from '../../utils/fecha'
 
 const CP_API = import.meta.env.VITE_API_URL ?? 'http://localhost:3011'
@@ -8,6 +8,10 @@ const token = () => localStorage.getItem('soati_shell_token')
 
 // Cada cuánto se actualiza sola la pantalla de recursos (milisegundos)
 const INTERVALO_REFRESCO_MS = 60_000
+
+// Aspecto único de las asignaciones tentativas (solicitudes de forzado pendientes): amarillo transparente con borde punteado.
+// Los matices amarillos (30°–75°) están reservados: ningún proyecto ni servicio los usa como color (ver utils/colores.js)
+const TENTATIVO = { fondo: 'rgba(250, 204, 21, 0.30)', borde: '#CA8A04', texto: '#854D0E' }
 
 const TIPOS = [
   { id: '',           label: 'Todos' },
@@ -21,6 +25,8 @@ const TIPOS = [
 function calcularColorGoldenAngle(idx) {
   let hue = (idx * 137.5) % 360
   if (hue < 20 || hue > 340) hue = (hue + 20) % 360
+  // La franja amarilla está reservada a las asignaciones tentativas: se pasa al verde
+  if (Math.round(hue) >= 30 && Math.round(hue) <= 75) hue = hue + 50
 
   const sats = [55, 75, 45]
   const lits = [42, 35, 50]
@@ -30,9 +36,17 @@ function calcularColorGoldenAngle(idx) {
   return `hsl(${Math.round(hue)}, ${sat}%, ${lit}%)`
 }
 
-// Color del proyecto — usa BD si existe, golden angle por índice como fallback
+// Dice si un color hsl(...) cae en la franja amarilla (30°–75°) reservada a las asignaciones tentativas
+function enFranjaAmarilla(color) {
+  const m = /^hsl\(\s*(\d+(?:\.\d+)?)/i.exec(String(color ?? ''))
+  if (!m) return false
+  const hue = Math.round(parseFloat(m[1]))
+  return hue >= 30 && hue <= 75
+}
+
+// Color del proyecto — usa BD si existe (y no es amarillo), golden angle por índice como fallback
 function colorProyecto(codigo, colorBD, todosCodigos) {
-  if (colorBD) return colorBD
+  if (colorBD && !enFranjaAmarilla(colorBD)) return colorBD
   const idx = [...todosCodigos].sort().indexOf(codigo)
   return calcularColorGoldenAngle(idx >= 0 ? idx : 0)
 }
@@ -150,6 +164,13 @@ export default function CalendarioRecursos() {
           }
           asigBase = [...asigBase, ...asigBase2]
         }
+        // Asignaciones tentativas: solicitudes de forzado pendientes de aprobar; se dibujan transparentes y no cuentan como asignadas
+        const mesesTentativas = mesParaCargar2 ? [mesActual, mesParaCargar2] : [mesActual]
+        const tiposTentativas = tipo === 'tecnicos' ? ['ensamble', 'campo'] : [tipo || undefined]
+        const respuestasTentativas = await Promise.all(
+          mesesTentativas.flatMap(m => tiposTentativas.map(t => getAsignacionesTentativas(m, t).catch(sinDatos)))
+        )
+        asigBase = [...asigBase, ...respuestasTentativas.flatMap(r => (Array.isArray(r) ? r : []))]
         const vistos = new Set()
         asigBase = asigBase.filter(a => {
           if (vistos.has(a.id)) return false
@@ -310,6 +331,12 @@ export default function CalendarioRecursos() {
 
       {cargando && <p className="text-sm text-gray-400 mb-4">Cargando...</p>}
 
+      {/* Leyenda: asignación tentativa */}
+      <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
+        <span className="inline-block w-6 h-3 rounded-sm" style={{ border: `1px dashed ${TENTATIVO.borde}`, background: TENTATIVO.fondo }} />
+        Tentativo: asignación pendiente de aprobación (todavía no cuenta como asignada)
+      </div>
+
       {/* Grid */}
       <div className="border border-gray-200 rounded-lg overflow-hidden overflow-x-auto">
         {/* Header días */}
@@ -376,14 +403,15 @@ export default function CalendarioRecursos() {
                       const fechaLimite      = asig.fecha_limite ? new Date(asig.fecha_limite) : null
                       const diasRestantes    = fechaLimite ? Math.ceil((fechaLimite - hoy) / 86400000) : null
                       const esSlaUrgente     = diasRestantes !== null && diasRestantes <= 3 && diasRestantes >= 0
-                      const etiqueta        = asig.codigo || ''
+                      const etiqueta        = (asig.tentativa ? '⏳ ' : '') + (asig.codigo || '')
                       const mostrarEtiqueta = vista !== 'mes' && etiqueta
                       return (
                         <div
                           key={i}
                           className="mx-0.5 rounded-sm cursor-pointer flex items-center overflow-hidden"
                           style={{
-                            backgroundColor: color,
+                            backgroundColor: asig.tentativa ? TENTATIVO.fondo : color,
+                            border: asig.tentativa ? `1px dashed ${TENTATIVO.borde}` : undefined,
                             height: mostrarEtiqueta ? '16px' : '10px',
                             opacity: asig.tipo === 'servicio' ? 0.85 : 1,
                             width: anchoBarra(asig),
@@ -401,7 +429,7 @@ export default function CalendarioRecursos() {
                           {mostrarEtiqueta && (
                             <span
                               className="font-medium px-1 truncate"
-                              style={{ fontSize: '9px', lineHeight: '16px', color: '#ffffff' }}
+                              style={{ fontSize: '9px', lineHeight: asig.tentativa ? '14px' : '16px', color: asig.tentativa ? TENTATIVO.texto : '#ffffff' }}
                             >
                               {etiqueta}
                             </span>
@@ -430,6 +458,11 @@ export default function CalendarioRecursos() {
           style={{ left: Math.min(tooltip.x + 12, window.innerWidth - 280), top: tooltip.y + 12 }}
         >
           <p className="font-semibold text-[#2C3A43] mb-1">{tooltip.asig.codigo}</p>
+          {tooltip.asig.tentativa && (
+            <p className="text-yellow-800 text-xs font-medium mb-1">
+              ⏳ Tentativo — pendiente de aprobación (pedido por {tooltip.asig.solicitado_por_nombre})
+            </p>
+          )}
           {tooltip.asig.tipo === 'servicio' && tooltip.asig.contrato_nombre && (
             <p className="text-gray-600 text-xs mb-1">{tooltip.asig.contrato_nombre}</p>
           )}
