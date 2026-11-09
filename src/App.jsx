@@ -12,13 +12,17 @@ import CalendarioRecursos from './pages/proyectos/CalendarioRecursos'
 import ListaServicios from './pages/servicios/ListaServicios'
 import FichaServicio from './pages/servicios/FichaServicio'
 import NuevoServicio from './pages/servicios/NuevoServicio'
+import AprobacionAsignaciones from './pages/proyectos/AprobacionAsignaciones'
+import AvisoAprobacion from './components/AvisoAprobacion'
+import ContadorAsignaciones from './components/ContadorAsignaciones'
 
-function Layout({ children, user, puedeVerProyectos, puedeAprobar, puedeConfigurar, puedeVerRecursos, puedeVerServicios }) {
+function Layout({ children, user, puedeVerProyectos, puedeAprobar, puedeConfigurar, puedeVerRecursos, puedeVerServicios, puedeVerAsignaciones }) {
   const tabs = [
     { to: '/proyectos',                label: 'Proyectos',      mostrar: puedeVerProyectos },
     { to: '/servicios',                label: 'Servicios',      mostrar: puedeVerServicios },
     { to: '/transferencias-pendientes', label: 'Transferencias', mostrar: puedeAprobar },
     { to: '/recursos',                 label: 'Recursos',       mostrar: puedeVerRecursos },
+    { to: '/asignaciones',              label: 'Asignaciones',   mostrar: puedeVerAsignaciones },
     { to: '/configuracion',            label: 'Configuración',  mostrar: puedeConfigurar },
   ].filter(t => t.mostrar)
 
@@ -49,12 +53,14 @@ function Layout({ children, user, puedeVerProyectos, puedeAprobar, puedeConfigur
               }
             >
               {t.label}
+              {t.to === '/asignaciones' && <ContadorAsignaciones />}
             </NavLink>
           ))}
         </nav>
       )}
 
       <main className="flex-1 px-4 sm:px-6 py-6 max-w-7xl mx-auto w-full">
+        <AvisoAprobacion />
         {children}
       </main>
     </div>
@@ -82,6 +88,11 @@ export default function App() {
   const puedeConfigurar       = esAdmin || tienePermiso('control-proyectos', 'configurar')
   const puedeVerRecursos      = esAdmin || tienePermiso('control-proyectos', 'gestionar_proyecto') || tienePermiso('control-proyectos', 'ver_recursos')
 
+  const permisosCp = [...(user?.permisos?.['control-proyectos'] ?? []), ...(user?.permisos_extra?.['control-proyectos'] ?? [])]
+  // Aprobar asignaciones forzadas exige el permiso explícito: el rol admin no lo tiene por serlo
+  const puedeAprobarAsignaciones = permisosCp.includes('aprobar_asignacion_forzada')
+  const puedeVerAsignaciones = puedeAprobarAsignaciones || esAdmin || permisosCp.includes('gestionar_proyecto') || permisosCp.includes('gestionar_servicios')
+
   const defaultRoute = puedeVerProyectos ? '/proyectos'
     : puedeVerServicios ? '/servicios'
     : puedeAprobar ? '/transferencias-pendientes'
@@ -96,6 +107,7 @@ export default function App() {
         puedeAprobar={puedeAprobar}
         puedeConfigurar={puedeConfigurar}
         puedeVerRecursos={puedeVerRecursos}
+        puedeVerAsignaciones={puedeVerAsignaciones}
       >
         <Routes>
           <Route path="/" element={<Navigate to={defaultRoute} replace />} />
@@ -120,6 +132,10 @@ export default function App() {
 
           {puedeVerRecursos && (
             <Route path="/recursos" element={<CalendarioRecursos />} />
+          )}
+
+          {puedeVerAsignaciones && (
+            <Route path="/asignaciones" element={<AprobacionAsignaciones puedeAprobar={puedeAprobarAsignaciones} />} />
           )}
 
           {puedeConfigurar && (

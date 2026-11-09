@@ -11,6 +11,7 @@ import {
   subirAdjuntoProyecto, descargarAdjuntoProyecto, eliminarAdjuntoProyecto,
   getRecursosIngenieria, getPMs, getComercialesCP,
   getRecursosDisponibles, verificarDisponibilidad, asignarRecurso, eliminarRecurso, getRecursosTarea,
+  anunciarAvisos, pedirJustificacion,
   crearSubproyecto, actualizarSubproyecto, eliminarSubproyecto,
   verificarBorradoProyecto, eliminarProyecto, deshabilitarProyecto,
 } from '../../services/api'
@@ -287,6 +288,10 @@ export default function FichaProyecto() {
   async function guardarSubFormRecurso() {
     const { tipo_recurso, recurso_id, fecha_inicio, fecha_fin, dedicacion_pct, forzar, conflicto_nota } = subFormData
     if (!recurso_id || !tipo_recurso || !fecha_inicio || !fecha_fin) return
+    if (forzar && subDispData && !subDispData.disponible && !String(conflicto_nota ?? '').trim()) {
+      setErrorSubForm('Escribí la justificación del choque para solicitar la aprobación')
+      return
+    }
     if (fecha_inicio && modalForm.fecha_inicio) {
       const fechaRecurso = new Date(`${fecha_inicio}T12:00:00`)
       const fechaTarea   = new Date(`${modalForm.fecha_inicio}T12:00:00`)
@@ -327,7 +332,7 @@ export default function FichaProyecto() {
     }
     if (modal.item?.id) {
       const result = await asignarRecurso(payload)
-      if (!result?.error) setRecursosEnTarea(list => [...list, result])
+      if (!result?.error && !result?.pendiente_aprobacion) setRecursosEnTarea(list => [...list, result])
     } else {
       setPendingRecursos(list => [...list, payload])
       setRecursosEnTarea(list => [...list, { ...payload, id: `pending_${Date.now()}` }])
@@ -390,7 +395,7 @@ export default function FichaProyecto() {
     await cargar()
   }
 
-  async function guardarEdicionRecurso(recursoId) {
+  async function guardarEdicionRecurso(recursoId, nota = null) {
     if (formRecurso.fecha_inicio && modalForm.fecha_inicio) {
       const fechaRecurso = new Date(`${formRecurso.fecha_inicio}T12:00:00`)
       const fechaTarea   = new Date(`${String(modalForm.fecha_inicio).slice(0,10)}T12:00:00`)
@@ -402,8 +407,23 @@ export default function FichaProyecto() {
     const API = import.meta.env.VITE_API_URL ?? 'http://localhost:3011'
     const hdrs = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('soati_shell_token')}` })
     const r = await fetch(`${API}/api/recursos/${recursoId}`, {
-      method: 'PATCH', headers: hdrs(), body: JSON.stringify(formRecurso)
+      method: 'PATCH', headers: hdrs(), body: JSON.stringify(typeof nota === 'string' ? { ...formRecurso, forzado: true, conflicto_nota: nota } : formRecurso)
     })
+    if (r.status === 409) {
+      const choque = await r.json().catch(() => ({}))
+      if (choque.solapamiento) {
+        const texto = await pedirJustificacion(choque.solapamientos)
+        if (texto) await guardarEdicionRecurso(recursoId, texto)
+        return
+      }
+    }
+    if (r.status === 202) {
+      const pendiente = await r.json().catch(() => ({}))
+      anunciarAvisos([pendiente.mensaje])
+      setEditandoRecurso(null)
+      setErrorSubForm(null)
+      return
+    }
     if (!r.ok) { setErrorSubForm('Error al actualizar recurso'); return }
     setRecursosEnTarea(prev => prev.map(rec => rec.id === recursoId ? { ...rec, ...formRecurso } : rec))
     setEditandoRecurso(null)
@@ -429,12 +449,16 @@ export default function FichaProyecto() {
               const fechaInst = inst.fecha_inicio
                 ? String(inst.fecha_inicio).slice(0, 10)
                 : recurso.fecha_inicio
-              await asignarRecurso({
-                ...recurso,
-                tarea_id:     inst.id,
-                fecha_inicio: fechaInst,
-                fecha_fin:    fechaInst,
-              }).catch(() => {})
+              const rInst = await asignarRecurso({
+              ...recurso,
+              tarea_id:     inst.id,
+              fecha_inicio: fechaInst,
+              fecha_fin:    fechaInst,
+            }).catch(() => null)
+            // Las asignaciones forzadas pendientes ya se avisan dentro de asignarRecurso; aquí se avisa de las que no se asignaron por choque
+            if (rInst?.solapamiento) {
+              anunciarAvisos([`La tarea «${inst.titulo}» (${fechaInst}) no fue asignada a ${recurso.usuario_nombre} por choque de recursos. Asígnalo manualmente y pasa por el proceso de forzar asignación.`])
+            }
             }
           }
         }
@@ -1480,10 +1504,10 @@ export default function FichaProyecto() {
                               ))}
                               <label className="flex items-center gap-2 mt-2 cursor-pointer">
                                 <input type="checkbox" checked={!!subFormData.forzar} onChange={e => setSubFormData(f => ({ ...f, forzar: e.target.checked }))} className="accent-[#EE7623]" />
-                                <span className="text-orange-700 font-medium">Forzar asignación</span>
+                                <span className="text-orange-700 font-medium">Forzar asignación (requiere aprobación)</span>
                               </label>
                               {subFormData.forzar && (
-                                <div><label className="block text-xs text-gray-500 mb-1">Nota para el PM</label>
+                                <div><label className="block text-xs text-gray-500 mb-1">Justificación del choque (obligatoria)</label>
                                   <input value={subFormData.conflicto_nota || ''} onChange={e => setSubFormData(f => ({ ...f, conflicto_nota: e.target.value }))} className={inp()} placeholder="Razón del solapamiento..." /></div>
                               )}
                             </div>

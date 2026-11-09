@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth.js'
 import { getRecursosDisponibles, verificarDisponibilidad, cerrarTicketPrincipal, cerrarTicketRecurso, eliminarServicio, verificarBorradoProyecto, deshabilitarServicio, getPMs, getCostosServicio } from '../../services/api.js'
 import { SearchableSelect } from '../../components/ui/SearchableSelect'
-import { sincronizarTareasContrato } from '../../services/api.js'
+import { sincronizarTareasContrato, anunciarAvisos, pedirJustificacion } from '../../services/api.js'
 import PanelCostos from '../../components/PanelCostos'
 
 const CP_API    = import.meta.env.VITE_API_URL ?? 'http://localhost:3011'
@@ -207,7 +207,7 @@ export default function FichaServicio() {
     finally { setGuardandoEditar(false) }
   }
 
-  /** Crea una nueva tarea (y sus instancias recurrentes si aplica) vía POST. */
+  /** Crea una nueva tarea (y sus instancias recurrentes si aplica) vía POST. Avisa si alguna quedó sin asignado por choque de recursos. */
   async function guardarTarea() {
     if (!formTarea.titulo) return
     try {
@@ -225,6 +225,8 @@ export default function FichaServicio() {
         })
       })
       if (r.ok) {
+        const creada = await r.json().catch(() => ({}))
+        anunciarAvisos(creada.avisos)
         setModalTarea(false)
         setFormTarea({ titulo: '', descripcion: '', asignado_id: '', asignado_nombre: '', fecha: '', fecha_fin: '', hora_inicio: '', hora_fin: '', recurrencia_tipo: '', recurrencia_fin: '', tipo_consumo: 'contratado', asignado_tipo_recurso: 'ingenieria', _requiereTipoManual: false })
         cargar()
@@ -232,18 +234,20 @@ export default function FichaServicio() {
     } catch (e) { console.error(e) }
   }
 
-  /** Aplica un cambio de campo a una instancia individual o a toda la serie pendiente/en_progreso. */
+  /** Aplica un cambio de campo a una instancia individual o a toda la serie pendiente/en_progreso. Avisa de las instancias que no se asignaron por choque. */
   async function aplicarCambioSerie(tarea, campo, valor, soloEsta) {
     const idsPadre = tarea.recurrencia_padre_id ?? tarea.id
     const url = soloEsta
       ? `${CP_API}/api/servicios/tareas/${tarea.id}`
       : `${CP_API}/api/servicios/tareas/serie/${idsPadre}`
 
-    await fetch(url, {
+    const r = await fetch(url, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
       body:    JSON.stringify({ [campo]: valor }),
     })
+    const respuesta = await r.json().catch(() => ({}))
+    anunciarAvisos(respuesta.avisos)
     setModalPropagar(null)
     await cargar()
   }
@@ -313,9 +317,14 @@ export default function FichaServicio() {
     } catch { setRecursosEnTarea([]) }
   }
 
-  /** Persiste los cambios de la tarea (título, fecha, asignado, tipo_consumo) vía PATCH. */
-  async function guardarEditarTarea() {
+  /**
+   * Persiste los cambios de la tarea (título, fecha, asignado, tipo_consumo) vía PATCH.
+   * Si el asignado o las fechas chocan con otra asignación pide la justificación y, si la dan, deja una solicitud pendiente
+   * de aprobación (ese cambio no se aplica todavía); el resto de los cambios sí se guarda.
+   */
+  async function guardarEditarTarea(nota = null) {
     if (!formEditarTarea.titulo.trim()) return
+    const justificacion = typeof nota === 'string' ? nota : null
     setGuardandoEditarTarea(true)
     try {
       const r = await fetch(`${CP_API}/api/servicios/tareas/${modalEditarTarea.id}`, {
@@ -329,9 +338,20 @@ export default function FichaServicio() {
           asignado_nombre:       formEditarTarea.asignado_nombre || null,
           tipo_consumo:          formEditarTarea.tipo_consumo    ?? 'contratado',
           asignado_tipo_recurso: formEditarTarea.asignado_tipo_recurso || 'ingenieria',
+          ...(justificacion ? { forzar: true, conflicto_nota: justificacion } : {}),
         }),
       })
+      if (r.status === 409) {
+        const choque = await r.json().catch(() => ({}))
+        if (choque.solapamiento) {
+          const texto = await pedirJustificacion(choque.solapamientos)
+          if (texto) await guardarEditarTarea(texto)
+          return
+        }
+      }
       if (r.ok) {
+        const respuesta = await r.json().catch(() => ({}))
+        anunciarAvisos(respuesta.avisos)
         setModalEditarTarea(null)
         await cargar()
       }
@@ -345,6 +365,10 @@ export default function FichaServicio() {
     setErrorRecurso('')
     const { tipo_recurso, recurso_id, fecha_inicio, fecha_fin, dedicacion_pct } = subFormData
     if (!recurso_id || !tipo_recurso || !fecha_inicio || !fecha_fin) return
+    if (subFormData.forzar && subDispData && !subDispData.disponible && !String(subFormData.conflicto_nota ?? '').trim()) {
+      setErrorRecurso('Escribí la justificación del choque para solicitar la aprobación')
+      return
+    }
     const recurso = usuarios.find(r => String(r.id) === String(recurso_id))
 
     if (modalEditarTarea && (modalEditarTarea.recurrencia_tipo || modalEditarTarea.recurrencia_padre_id)) {
@@ -381,7 +405,15 @@ export default function FichaServicio() {
           conflicto_nota:       subFormData.conflicto_nota ?? null,
         }),
       })
-      if (r.ok) {
+      if (r.status === 202) {
+        // Asignación forzada: queda pendiente de aprobación y el recurso todavía no se agrega a la tarea
+        const pendiente = await r.json().catch(() => ({}))
+        anunciarAvisos([pendiente.mensaje])
+        setSubFormVisible(false)
+        setSubFormData({})
+        setSubDispData(null)
+        setErrorRecurso('')
+      } else if (r.ok) {
         const nuevo = await r.json()
         setRecursosEnTarea(list => [...list, nuevo])
         setSubFormVisible(false)
@@ -392,6 +424,116 @@ export default function FichaServicio() {
         setErrorRecurso(err.error || 'Error al agregar el recurso')
       }
     } catch (e) { console.error(e) }
+  }
+
+  /** Modal de tarea recurrente, "Solo esta instancia": agrega o elimina el recurso solo en esta tarea, o aplica el cambio de campo solo a ella. */
+  async function propagarSoloEsta() {
+    if (modalPropagar.accion === 'agregar') {
+      // C2: agregar recurso solo a esta instancia
+      try {
+        const r = await fetch(`${CP_API}/api/recursos`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
+          body:    JSON.stringify(modalPropagar.recurso),
+        })
+        if (r.status === 202) {
+          const pendiente = await r.json().catch(() => ({}))
+          anunciarAvisos([pendiente.mensaje])
+          setSubFormVisible(false)
+          setSubFormData({})
+          setSubDispData(null)
+        } else if (r.ok) {
+          const nuevo = await r.json()
+          setRecursosEnTarea(list => [...list, nuevo])
+          setSubFormVisible(false)
+          setSubFormData({})
+          setSubDispData(null)
+        } else {
+          const err = await r.json().catch(() => ({}))
+          setErrorRecurso(err.error || 'Error al agregar el recurso')
+        }
+      } catch (e) { console.error('[modalPropagar agregar instancia]', e) }
+      setModalPropagar(null)
+    } else if (modalPropagar.accion === 'eliminar') {
+      // C2: eliminar recurso solo de esta instancia
+      try {
+        await fetch(`${CP_API}/api/recursos/${modalPropagar.recurso.id}`, {
+          method:  'DELETE',
+          headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
+        })
+        setRecursosEnTarea(list => list.filter(x => x.id !== modalPropagar.recurso.id))
+      } catch (e) { console.error('[modalPropagar eliminar instancia]', e) }
+      setModalPropagar(null)
+    } else {
+      // Cambio de campo (estado, etc.) — comportamiento original
+      aplicarCambioSerie(modalPropagar.tarea, modalPropagar.campo, modalPropagar.valor, true)
+    }
+  }
+
+  /** Modal de tarea recurrente, "Toda la serie": agrega o elimina el recurso en las instancias pendientes y en progreso, o aplica el cambio de campo a la serie. */
+  async function propagarSerie() {
+    if (modalPropagar.accion === 'agregar') {
+      // C2: agregar recurso a todas las instancias pendientes/en_progreso de la serie
+      try {
+        const padreId = modalPropagar.tarea.recurrencia_padre_id ?? modalPropagar.tarea.id
+        const instRes = await fetch(`${CP_API}/api/servicios/tareas/serie/${padreId}/instancias`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` }
+        })
+        if (instRes.ok) {
+          const instancias = await instRes.json()
+          const avisos = []
+          for (const inst of instancias) {
+            const fechaInst = inst.fecha ? String(inst.fecha).slice(0, 10) : modalPropagar.recurso.fecha_inicio
+            const rInst = await fetch(`${CP_API}/api/recursos`, {
+              method:  'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
+              body:    JSON.stringify({
+                ...modalPropagar.recurso,
+                servicio_tarea_id: inst.id,
+                fecha_inicio:      fechaInst,
+                fecha_fin:         fechaInst,
+              }),
+            }).catch(() => null)
+            const dInst = rInst ? await rInst.json().catch(() => ({})) : {}
+            if (rInst?.status === 202 && dInst.mensaje) {
+              avisos.push(dInst.mensaje)
+            } else if (rInst?.status === 409 && dInst.solapamiento) {
+              avisos.push(`La tarea «${inst.titulo}» (${fechaInst}) no fue asignada a ${modalPropagar.recurso.usuario_nombre} por choque de recursos. Asígnalo manualmente y pasa por el proceso de forzar asignación.`)
+            }
+          }
+          anunciarAvisos(avisos)
+        } else {
+          const err = await instRes.json().catch(() => ({}))
+          setErrorRecurso(err.error || 'Error al agregar el recurso')
+        }
+        // Recargar recursos de la tarea actual
+        const r = await fetch(`${CP_API}/api/recursos/servicio-tarea/${modalPropagar.tarea.id}`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` }
+        })
+        if (r.ok) setRecursosEnTarea(await r.json())
+        setSubFormVisible(false)
+        setSubFormData({})
+        setSubDispData(null)
+      } catch (e) { console.error('[modalPropagar agregar serie]', e) }
+      setModalPropagar(null)
+    } else if (modalPropagar.accion === 'eliminar') {
+      // C2: eliminar recurso de todas las instancias pendientes/en_progreso de la serie
+      try {
+        const padreId = modalPropagar.tarea.recurrencia_padre_id ?? modalPropagar.tarea.id
+        await fetch(`${CP_API}/api/servicios/tareas/serie/${padreId}/recursos/${modalPropagar.recurso.usuario_id}`, {
+          method:  'DELETE',
+          headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
+        })
+        const r = await fetch(`${CP_API}/api/recursos/servicio-tarea/${modalPropagar.tarea.id}`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` }
+        })
+        if (r.ok) setRecursosEnTarea(await r.json())
+      } catch (e) { console.error('[modalPropagar eliminar serie]', e) }
+      setModalPropagar(null)
+    } else {
+      // Cambio de campo (estado, etc.) — comportamiento original
+      aplicarCambioSerie(modalPropagar.tarea, modalPropagar.campo, modalPropagar.valor, false)
+    }
   }
 
   /** Elimina un recurso de la tarea; si la tarea es recurrente abre el modal de propagación para preguntar el alcance. */
@@ -452,14 +594,32 @@ export default function FichaServicio() {
     }
   }
 
-  /** Actualiza fechas y dedicación de un recurso existente vía PATCH. */
-  async function guardarEdicionRecursoServicio(recursoId) {
+  /**
+   * Actualiza fechas y dedicación de un recurso existente vía PATCH. Si el cambio de fechas choca con otra asignación pide la
+   * justificación y deja una solicitud pendiente de aprobación: el recurso no cambia hasta que se apruebe.
+   */
+  async function guardarEdicionRecursoServicio(recursoId, nota = null) {
     try {
+      const justificacion = typeof nota === 'string' ? nota : null
       const r = await fetch(`${CP_API}/api/recursos/${recursoId}`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
-        body: JSON.stringify(formRecurso),
+        body: JSON.stringify(justificacion ? { ...formRecurso, forzado: true, conflicto_nota: justificacion } : formRecurso),
       })
+      if (r.status === 409) {
+        const choque = await r.json().catch(() => ({}))
+        if (choque.solapamiento) {
+          const texto = await pedirJustificacion(choque.solapamientos)
+          if (texto) await guardarEdicionRecursoServicio(recursoId, texto)
+          return
+        }
+      }
+      if (r.status === 202) {
+        const pendiente = await r.json().catch(() => ({}))
+        anunciarAvisos([pendiente.mensaje])
+        setEditandoRecurso(null)
+        return
+      }
       if (r.ok) {
         setRecursosEnTarea(prev => prev.map(rec => rec.id === recursoId ? { ...rec, ...formRecurso } : rec))
         setEditandoRecurso(null)
@@ -1411,10 +1571,10 @@ export default function FichaServicio() {
                           ))}
                           <label className="flex items-center gap-2 mt-2 cursor-pointer">
                             <input type="checkbox" checked={!!subFormData.forzar} onChange={e => setSubFormData(f => ({ ...f, forzar: e.target.checked }))} className="accent-[#EE7623]" />
-                            <span className="text-orange-700 font-medium">Forzar asignación</span>
+                            <span className="text-orange-700 font-medium">Forzar asignación (requiere aprobación)</span>
                           </label>
                           {subFormData.forzar && (
-                            <div><label className="block text-xs text-gray-500 mb-1">Nota para el PM</label>
+                            <div><label className="block text-xs text-gray-500 mb-1">Justificación del choque (obligatoria)</label>
                               <input value={subFormData.conflicto_nota || ''} onChange={e => setSubFormData(f => ({ ...f, conflicto_nota: e.target.value }))} className="w-full border border-[#E8EAEC] rounded-lg px-3 py-2 text-sm" placeholder="Razón del solapamiento..." /></div>
                           )}
                         </div>
@@ -1492,103 +1652,13 @@ export default function FichaServicio() {
             )}
             <div className="flex flex-col gap-2">
               <button
-                onClick={async () => {
-                  if (modalPropagar.accion === 'agregar') {
-                    // C2: agregar recurso solo a esta instancia
-                    try {
-                      const r = await fetch(`${CP_API}/api/recursos`, {
-                        method:  'POST',
-                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
-                        body:    JSON.stringify(modalPropagar.recurso),
-                      })
-                      if (r.ok) {
-                        const nuevo = await r.json()
-                        setRecursosEnTarea(list => [...list, nuevo])
-                        setSubFormVisible(false)
-                        setSubFormData({})
-                        setSubDispData(null)
-                      } else {
-                        const err = await r.json().catch(() => ({}))
-                        setErrorRecurso(err.error || 'Error al agregar el recurso')
-                      }
-                    } catch (e) { console.error('[modalPropagar agregar instancia]', e) }
-                    setModalPropagar(null)
-                  } else if (modalPropagar.accion === 'eliminar') {
-                    // C2: eliminar recurso solo de esta instancia
-                    try {
-                      await fetch(`${CP_API}/api/recursos/${modalPropagar.recurso.id}`, {
-                        method:  'DELETE',
-                        headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
-                      })
-                      setRecursosEnTarea(list => list.filter(x => x.id !== modalPropagar.recurso.id))
-                    } catch (e) { console.error('[modalPropagar eliminar instancia]', e) }
-                    setModalPropagar(null)
-                  } else {
-                    // Cambio de campo (estado, etc.) — comportamiento original
-                    aplicarCambioSerie(modalPropagar.tarea, modalPropagar.campo, modalPropagar.valor, true)
-                  }
-                }}
+                onClick={propagarSoloEsta}
                 className="px-4 py-2 bg-[#4E738A] text-white text-sm rounded-lg hover:bg-[#3a5a6e]"
               >
                 Solo esta instancia
               </button>
               <button
-                onClick={async () => {
-                  if (modalPropagar.accion === 'agregar') {
-                    // C2: agregar recurso a todas las instancias pendientes/en_progreso de la serie
-                    try {
-                      const padreId = modalPropagar.tarea.recurrencia_padre_id ?? modalPropagar.tarea.id
-                      const instRes = await fetch(`${CP_API}/api/servicios/tareas/serie/${padreId}/instancias`, {
-                        headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` }
-                      })
-                      if (instRes.ok) {
-                        const instancias = await instRes.json()
-                        for (const inst of instancias) {
-                          const fechaInst = inst.fecha ? String(inst.fecha).slice(0, 10) : modalPropagar.recurso.fecha_inicio
-                          await fetch(`${CP_API}/api/recursos`, {
-                            method:  'POST',
-                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
-                            body:    JSON.stringify({
-                              ...modalPropagar.recurso,
-                              servicio_tarea_id: inst.id,
-                              fecha_inicio:      fechaInst,
-                              fecha_fin:         fechaInst,
-                            }),
-                          }).catch(() => {})
-                        }
-                      } else {
-                        const err = await instRes.json().catch(() => ({}))
-                        setErrorRecurso(err.error || 'Error al agregar el recurso')
-                      }
-                      // Recargar recursos de la tarea actual
-                      const r = await fetch(`${CP_API}/api/recursos/servicio-tarea/${modalPropagar.tarea.id}`, {
-                        headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` }
-                      })
-                      if (r.ok) setRecursosEnTarea(await r.json())
-                      setSubFormVisible(false)
-                      setSubFormData({})
-                      setSubDispData(null)
-                    } catch (e) { console.error('[modalPropagar agregar serie]', e) }
-                    setModalPropagar(null)
-                  } else if (modalPropagar.accion === 'eliminar') {
-                    // C2: eliminar recurso de todas las instancias pendientes/en_progreso de la serie
-                    try {
-                      const padreId = modalPropagar.tarea.recurrencia_padre_id ?? modalPropagar.tarea.id
-                      await fetch(`${CP_API}/api/servicios/tareas/serie/${padreId}/recursos/${modalPropagar.recurso.usuario_id}`, {
-                        method:  'DELETE',
-                        headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
-                      })
-                      const r = await fetch(`${CP_API}/api/recursos/servicio-tarea/${modalPropagar.tarea.id}`, {
-                        headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` }
-                      })
-                      if (r.ok) setRecursosEnTarea(await r.json())
-                    } catch (e) { console.error('[modalPropagar eliminar serie]', e) }
-                    setModalPropagar(null)
-                  } else {
-                    // Cambio de campo (estado, etc.) — comportamiento original
-                    aplicarCambioSerie(modalPropagar.tarea, modalPropagar.campo, modalPropagar.valor, false)
-                  }
-                }}
+                onClick={propagarSerie}
                 className="px-4 py-2 border border-[#4E738A] text-[#4E738A] text-sm rounded-lg hover:bg-[#4E738A]/5"
               >
                 Toda la serie (pendientes y en progreso)

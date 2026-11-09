@@ -210,7 +210,11 @@ export const getCalendarioRecursos = (mes, tipo) => {
 export const asignarRecurso = (data) =>
   fetch(`${BASE}/api/recursos`, {
     method: 'POST', headers: headers(), body: JSON.stringify(data)
-  }).then(r => r.json())
+  }).then(r => r.json()).then(res => {
+    // Una asignación forzada queda pendiente de aprobación: se le avisa al PM (los demás resultados siguen igual)
+    if (res?.pendiente_aprobacion) anunciarAvisos([res.mensaje])
+    return res
+  })
 
 export const eliminarRecurso = (id) =>
   fetch(`${BASE}/api/recursos/${id}`, {
@@ -231,6 +235,34 @@ export const cerrarTicketRecurso = (recursoId, body) =>
   fetch(`${BASE}/api/recursos/${recursoId}/cerrar`, {
     method: 'POST', headers: headers(), body: JSON.stringify(body)
   }).then(r => r.json().then(data => ({ ok: r.ok, data })))
+
+// Avisos y justificación al forzar una asignación (ventanas globales, ver components/AvisoAprobacion.jsx)
+import { anunciarAvisos, pedirJustificacion } from '../utils/avisosAprobacion'
+export { anunciarAvisos, pedirJustificacion }
+
+// Aprobación de asignaciones forzadas
+/** Lista las solicitudes de una vista: 'pendientes' y 'resueltas' (solo quien aprueba) o 'mias'. */
+export const getAsignaciones = (vista) =>
+  fetch(`${BASE}/api/asignaciones?vista=${vista}`, { headers: headers() }).then(r => r.json())
+
+/** Cantidad de solicitudes pendientes de aprobar (solo quien aprueba). */
+export const getContadorAsignaciones = () =>
+  fetch(`${BASE}/api/asignaciones/contador`, { headers: headers() }).then(r => r.json())
+
+/** Aprueba una solicitud y aplica la asignación. */
+export const aprobarAsignacion = (id) =>
+  fetch(`${BASE}/api/asignaciones/${id}/aprobar`, { method: 'POST', headers: headers() })
+    .then(r => r.json().then(data => ({ ok: r.ok, data })))
+
+/** Rechaza una solicitud con un motivo. */
+export const rechazarAsignacion = (id, motivo) =>
+  fetch(`${BASE}/api/asignaciones/${id}/rechazar`, { method: 'POST', headers: headers(), body: JSON.stringify({ motivo }) })
+    .then(r => r.json().then(data => ({ ok: r.ok, data })))
+
+/** Cancela una solicitud propia pendiente (se elimina). */
+export const cancelarAsignacion = (id) =>
+  fetch(`${BASE}/api/asignaciones/${id}`, { method: 'DELETE', headers: headers() })
+    .then(r => r.json().then(data => ({ ok: r.ok, data })))
 
 // Verificación y borrado de proyectos y servicios
 export const verificarBorradoProyecto = (codigo) =>
