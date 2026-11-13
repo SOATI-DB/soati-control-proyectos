@@ -626,6 +626,7 @@ export default function FichaServicio() {
       } else {
         const err = await r.json().catch(() => ({}))
         console.error('[guardarEdicionRecursoServicio] Error:', r.status, err)
+        setErrorRecurso(err.error || 'Error al actualizar recurso')
       }
     } catch (e) { console.error('[guardarEdicionRecursoServicio]', e) }
   }
@@ -1455,6 +1456,35 @@ export default function FichaServicio() {
                                 className="w-full border border-[#E8EAEC] rounded px-2 py-1 text-xs" />
                             </div>
                           </div>
+                          {String(r.usuario_id) === String(modalEditarTarea?.asignado_id)
+                            ? <p className="text-[10px] text-gray-500">Es el recurso principal de la tarea: la persona se cambia en «Asignado a» de la tarea.</p>
+                            : (
+                              <div>
+                                <label className="block text-xs text-[#5f6b75] mb-1">Persona asignada</label>
+                                <select value={formRecurso.usuario_id ?? ''}
+                                  onChange={e => {
+                                    const u = usuarios.find(x => String(x.id) === e.target.value)
+                                    setFormRecurso(f => ({ ...f, usuario_id: e.target.value, usuario_nombre: u?.nombre ?? f.usuario_nombre }))
+                                  }}
+                                  className="w-full border border-[#E8EAEC] rounded px-2 py-1 text-xs">
+                                  {!usuarios.some(x => String(x.id) === String(formRecurso.usuario_id)) && (
+                                    <option value={formRecurso.usuario_id}>{formRecurso.usuario_nombre}</option>
+                                  )}
+                                  {usuarios
+                                    .filter(x => (x.tipos ?? []).includes(r.tipo_recurso) || String(x.id) === String(formRecurso.usuario_id))
+                                    .map(x => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+                                </select>
+                              </div>
+                            )}
+                          <label className="flex items-center gap-2 text-xs text-[#5f6b75] cursor-pointer">
+                            <input type="checkbox" checked={!!formRecurso.incluir_fines_semana}
+                              onChange={e => setFormRecurso(f => ({ ...f, incluir_fines_semana: e.target.checked ? 1 : 0 }))}
+                              className="rounded" />
+                            Incluir fines de semana
+                          </label>
+                          {errorRecurso && (
+                            <p className="text-xs text-red-600">{errorRecurso}</p>
+                          )}
                           <div className="flex justify-end gap-2">
                             <button type="button" onClick={() => setEditandoRecurso(null)}
                               className="text-xs text-[#5f6b75] hover:text-[#2C3A43]">Cancelar</button>
@@ -1465,7 +1495,7 @@ export default function FichaServicio() {
                       ) : (
                         <div className="flex items-start justify-between">
                           <div>
-                            <span className="text-xs text-[#2C3A43]">{r.usuario_nombre} · {r.tipo_recurso} · {r.dedicacion_pct}%</span>
+                            <span className="text-xs text-[#2C3A43]">{r.usuario_nombre} · {r.tipo_recurso} · {r.dedicacion_pct}%{r.incluir_fines_semana ? ' · con fines de semana' : ''}</span>
                             <div className="text-[11px] text-[#9aa1a9] mt-0.5">
                               {r.fecha_inicio ? String(r.fecha_inicio).slice(0,10) : '—'} → {r.fecha_fin ? String(r.fecha_fin).slice(0,10) : '—'}
                             </div>
@@ -1477,7 +1507,10 @@ export default function FichaServicio() {
                                   fecha_inicio:   r.fecha_inicio ? String(r.fecha_inicio).slice(0,10) : '',
                                   fecha_fin:      r.fecha_fin    ? String(r.fecha_fin).slice(0,10)    : '',
                                   dedicacion_pct: r.dedicacion_pct ?? 100,
+                                  incluir_fines_semana: r.incluir_fines_semana ? 1 : 0,
+                                  usuario_id: String(r.usuario_id), usuario_nombre: r.usuario_nombre,
                                 })
+                                setErrorRecurso('')
                                 setEditandoRecurso(r.id)
                               }}
                               className="text-xs text-[#4E738A] hover:underline">Editar</button>

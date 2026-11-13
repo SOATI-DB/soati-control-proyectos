@@ -312,6 +312,7 @@ export default function FichaProyecto() {
         fecha_inicio,
         fecha_fin,
         dedicacion_pct: parseInt(dedicacion_pct) || 100,
+        incluir_fines_semana: subFormData.incluir_fines_semana ? 1 : 0,
         forzado:        forzar ? 1 : 0,
         conflicto_nota: conflicto_nota ?? null,
       }
@@ -327,6 +328,7 @@ export default function FichaProyecto() {
       tipo_recurso,
       fecha_inicio, fecha_fin,
       dedicacion_pct: dedicacion_pct || 100,
+      incluir_fines_semana: subFormData.incluir_fines_semana ? 1 : 0,
       forzado:        forzar ? 1 : 0,
       conflicto_nota: conflicto_nota ?? null,
     }
@@ -424,7 +426,7 @@ export default function FichaProyecto() {
       setErrorSubForm(null)
       return
     }
-    if (!r.ok) { setErrorSubForm('Error al actualizar recurso'); return }
+    if (!r.ok) { const err = await r.json().catch(() => ({})); setErrorSubForm(err.error || 'Error al actualizar recurso'); return }
     setRecursosEnTarea(prev => prev.map(rec => rec.id === recursoId ? { ...rec, ...formRecurso } : rec))
     setEditandoRecurso(null)
     setErrorSubForm(null)
@@ -1375,6 +1377,28 @@ export default function FichaProyecto() {
                                     className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-[#4E738A]" />
                                 </div>
                               </div>
+                              <div>
+                                <label className="block text-[10px] text-gray-500 mb-0.5">Persona asignada</label>
+                                <select value={formRecurso.usuario_id ?? ''}
+                                  onChange={e => {
+                                    const u = recursosDisponibles.find(x => String(x.id) === e.target.value)
+                                    setFormRecurso(f => ({ ...f, usuario_id: e.target.value, usuario_nombre: u?.nombre ?? f.usuario_nombre }))
+                                  }}
+                                  className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-[#4E738A]">
+                                  {!recursosDisponibles.some(x => String(x.id) === String(formRecurso.usuario_id)) && (
+                                    <option value={formRecurso.usuario_id}>{formRecurso.usuario_nombre}</option>
+                                  )}
+                                  {recursosDisponibles
+                                    .filter(x => x.tipos.includes(r.tipo_recurso) || String(x.id) === String(formRecurso.usuario_id))
+                                    .map(x => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+                                </select>
+                              </div>
+                              <label className="flex items-center gap-1.5 cursor-pointer">
+                                <input type="checkbox" checked={!!formRecurso.incluir_fines_semana}
+                                  onChange={e => setFormRecurso(f => ({ ...f, incluir_fines_semana: e.target.checked ? 1 : 0 }))}
+                                  className="w-3 h-3 accent-[#4E738A]" />
+                                <span className="text-[10px] text-gray-500">Incluir fines de semana</span>
+                              </label>
                               <div className="flex justify-end">
                                 <button type="button" onClick={() => guardarEdicionRecurso(r.id)}
                                   className="text-xs bg-[#4E738A] text-white px-3 py-1 rounded hover:bg-[#3d5c70]">
@@ -1385,7 +1409,7 @@ export default function FichaProyecto() {
                           ) : (
                             <div className="flex items-start justify-between">
                               <div>
-                                <span className="text-xs text-[#2C3A43]">{r.usuario_nombre} · {r.tipo_recurso} · {r.dedicacion_pct}%</span>
+                                <span className="text-xs text-[#2C3A43]">{r.usuario_nombre} · {r.tipo_recurso} · {r.dedicacion_pct}%{r.incluir_fines_semana ? ' · con fines de semana' : ''}</span>
                                 <div className="text-[11px] text-gray-400 mt-0.5">
                                   {r.fecha_inicio ? formatFecha(r.fecha_inicio) : '—'} → {r.fecha_fin ? formatFecha(r.fecha_fin) : '—'}
                                 </div>
@@ -1397,7 +1421,9 @@ export default function FichaProyecto() {
                                       setFormRecurso({
                                         fecha_inicio:   r.fecha_inicio ? String(r.fecha_inicio).slice(0,10) : '',
                                         fecha_fin:      r.fecha_fin    ? String(r.fecha_fin).slice(0,10)    : '',
-                                        dedicacion_pct: r.dedicacion_pct ?? 100
+                                        dedicacion_pct: r.dedicacion_pct ?? 100,
+                                        incluir_fines_semana: r.incluir_fines_semana ? 1 : 0,
+                                        usuario_id: String(r.usuario_id), usuario_nombre: r.usuario_nombre
                                       })
                                       setEditandoRecurso(r.id)
                                     }}
